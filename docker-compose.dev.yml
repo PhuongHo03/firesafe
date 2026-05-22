@@ -1,0 +1,94 @@
+version: '3.8'
+
+# Docker Compose for local development (Phase 2)
+# Chạy: docker compose -f docker-compose.dev.yml up -d
+# Chỉ khởi động infrastructure, Spring Boot chạy trực tiếp trên máy host
+
+services:
+  mariadb:
+    image: mariadb:11.4
+    container_name: firesafe-mariadb
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: firesafe
+      MYSQL_USER: firesafe
+      MYSQL_PASSWORD: firesafe
+    ports:
+      - "${MARIADB_PORT:-3306}:3306"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: firesafe-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: firesafe-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_UI_PORT:-15672}:15672"   # RabbitMQ Management UI
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: firesafe-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"   # MinIO Console UI
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # --- Dev Tools (UI) ---
+
+  adminer:
+    image: adminer:4.8.1
+    container_name: firesafe-adminer
+    ports:
+      - "${ADMINER_PORT:-8081}:8080"   # Truy cập: http://localhost:8081
+    environment:
+      ADMINER_DEFAULT_SERVER: firesafe-mariadb
+    depends_on:
+      mariadb:
+        condition: service_healthy
+
+  redisinsight:
+    image: redis/redisinsight:latest
+    container_name: firesafe-redisinsight
+    ports:
+      - "${REDISINSIGHT_PORT:-5540}:5540"   # Truy cập: http://localhost:5540
+    volumes:
+      - redisinsight_data:/data
+
+volumes:
+  mariadb_data:
+  minio_data:
+  redisinsight_data:

@@ -1,0 +1,54 @@
+# Runtime
+.runtime/
+logs/
+*.log
+
+# Env / secrets
+.env
+.env.*
+*.env.local
+backend/.env.local
+frontend/.env.local
+!.env.example
+!*.env.example
+!*.env.local.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+ai-worker/venv/
+mock-worker/venv/
+video-detect/venv/
+
+# Node / Next
+node_modules/
+.next/
+out/
+build/
+coverage/
+*.tsbuildinfo
+next-env.d.ts
+
+# Java / Maven
+backend/target/
+backend/.mvn/wrapper/maven-wrapper.jar
+jdk-*/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.iml
+
+# Local heavy artifacts
+ai-worker/models/*.pt
+video-detect/models/*.pt
+video-detect/videos/*
+video-detect/runs/
+ai-worker/runs/
+
+# MinIO / generated snapshots
+snapshots/
