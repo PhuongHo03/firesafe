@@ -3,12 +3,13 @@ import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 import cv2
-from ultralytics import YOLO
 
 from src.backend_client import BackendClient
+from src.detector import YoloDetector
 from src.snapshot import encode_png
 from src.storage import MinioSnapshotStorage
 
@@ -123,7 +124,7 @@ class CameraWorker:
         self._set_status(False, None)
 
     def _detect_loop(self):
-        model = YOLO(self.config.model_path)
+        detector = YoloDetector(Path(self.config.model_path))
         backend = BackendClient(self.config.backend_url, self.config.username, self.config.password)
         storage = MinioSnapshotStorage(
             self.config.minio_url,
@@ -139,7 +140,7 @@ class CameraWorker:
             if frame is None:
                 continue
 
-            results = model.predict(frame, conf=self.config.conf, verbose=False)
+            results = detector.predict_frame(frame, conf=self.config.conf)
             result = results[0] if results else None
             if result is None or result.boxes is None or len(result.boxes) == 0:
                 continue

@@ -79,7 +79,7 @@ Các port trong bảng dưới là default khi chạy Docker Compose thủ công
 |---|---|
 | Image | `mariadb:11.4` |
 | Container | `firesafe-mariadb` |
-| Port | `3306:3306` |
+| Port | Runtime `MARIADB_PORT` → container `3306` (manual default `3306`) |
 | Database | `firesafe` |
 | Username | `firesafe` |
 | Password | `firesafe` |
@@ -91,12 +91,12 @@ Các port trong bảng dưới là default khi chạy Docker Compose thủ công
 
 **Healthcheck:** Kiểm tra MariaDB đã sẵn sàng nhận connection và InnoDB đã khởi tạo xong. Spring Boot sẽ không kết nối được nếu healthcheck chưa pass.
 
-**UI:** Truy cập qua **Adminer** (đã có trong compose) tại `http://localhost:8081`.
-Hoặc dùng database client bên ngoài qua port `3306`: DBeaver, HeidiSQL, TablePlus, mysql CLI.
+**UI:** Truy cập qua **Adminer** (đã có trong compose) tại `http://localhost:<ADMINER_PORT>`.
+Hoặc dùng database client bên ngoài qua `localhost:<MARIADB_PORT>`: DBeaver, HeidiSQL, TablePlus, mysql CLI.
 
 **Kết nối từ Spring Boot** (trong `application.yml`):
 ```yaml
-spring.datasource.url: jdbc:mariadb://localhost:3306/firesafe
+spring.datasource.url: jdbc:mariadb://localhost:<MARIADB_PORT>/firesafe
 spring.datasource.username: firesafe
 spring.datasource.password: firesafe
 ```
@@ -109,7 +109,7 @@ spring.datasource.password: firesafe
 |---|---|
 | Image | `redis:7.4-alpine` |
 | Container | `firesafe-redis` |
-| Port | `6379:6379` |
+| Port | Runtime `REDIS_PORT` → container `6379` (manual default `6379`) |
 | Auth | Không (dev mode) |
 
 **Vai trò:** Lưu trữ key debounce để chống spam alert. Khi AI Worker gửi alert từ một camera, Spring Boot set key `alert:debounce:{camera_id}` với TTL 5 phút vào Redis. Nếu key còn tồn tại, các alert tiếp theo từ camera đó sẽ không gửi notification.
@@ -118,7 +118,7 @@ spring.datasource.password: firesafe
 
 **Không có volume:** Redis trong dev không cần persist data — nếu container restart, key debounce mất đi là chấp nhận được.
 
-**UI:** Truy cập qua **RedisInsight** (đã có trong compose) tại `http://localhost:5540`.
+**UI:** Truy cập qua **RedisInsight** (đã có trong compose) tại `http://localhost:<REDISINSIGHT_PORT>`.
 Hoặc dùng redis-cli trực tiếp trong container:
 ```bash
 docker exec -it firesafe-redis redis-cli
@@ -129,7 +129,7 @@ TTL alert:debounce:1
 **Kết nối từ Spring Boot**:
 ```yaml
 spring.data.redis.host: localhost
-spring.data.redis.port: 6379
+spring.data.redis.port: <REDIS_PORT>
 ```
 
 ---
@@ -140,8 +140,8 @@ spring.data.redis.port: 6379
 |---|---|
 | Image | `rabbitmq:3.13-management-alpine` |
 | Container | `firesafe-rabbitmq` |
-| Port AMQP | `5672:5672` |
-| Port Management UI | `15672:15672` |
+| Port AMQP | Runtime `RABBITMQ_PORT` → container `5672` (manual default `5672`) |
+| Port Management UI | Runtime `RABBITMQ_UI_PORT` → container `15672` (manual default `15672`) |
 | Username | `guest` |
 | Password | `guest` |
 
@@ -149,14 +149,14 @@ spring.data.redis.port: 6379
 - Nếu Telegram API tạm lỗi/rate limit, worker có thể retry mà không chặn request alert
 - `AlertService` trả response ngay cho AI Worker, không phải chờ notification gửi xong
 
-**Management UI:** Truy cập `http://localhost:15672` (`guest/guest`) để xem topology Exchange/Queue, số message đang chờ, consumer status.
+**Management UI:** Truy cập `http://localhost:<RABBITMQ_UI_PORT>` (`guest/guest`) để xem topology Exchange/Queue, số message đang chờ, consumer status.
 
 **`management-alpine` image:** Bản có sẵn giao diện web quản lý, tiện cho dev.
 
 **Kết nối từ Spring Boot**:
 ```yaml
 spring.rabbitmq.host: localhost
-spring.rabbitmq.port: 5672
+spring.rabbitmq.port: <RABBITMQ_PORT>
 spring.rabbitmq.username: guest
 spring.rabbitmq.password: guest
 ```
@@ -169,8 +169,8 @@ spring.rabbitmq.password: guest
 |---|---|
 | Image | `minio/minio:latest` |
 | Container | `firesafe-minio` |
-| Port API | `9000:9000` |
-| Port Console UI | `9001:9001` |
+| Port API | Runtime `MINIO_API_PORT` → container `9000` (manual default `9000`) |
+| Port Console UI | Runtime `MINIO_CONSOLE_PORT` → container `9001` (manual default `9001`) |
 | Root User | `minioadmin` |
 | Root Password | `minioadmin` |
 
@@ -179,13 +179,13 @@ spring.rabbitmq.password: guest
 **Luồng ảnh:**
 ```
 AI Worker phát hiện lửa
-    → Crop frame → Upload ảnh lên MinIO (port 9000)
-    → Nhận lại URL: http://localhost:9000/snapshots/cam-001/...
+    → Crop frame → Upload ảnh lên MinIO (port MINIO_API_PORT)
+    → Nhận lại URL: http://localhost:<MINIO_API_PORT>/snapshots/cam-001/...
     → Gửi URL này kèm theo payload POST /api/v1/alerts
     → Spring Boot lưu URL vào cột image_url trong bảng alerts
 ```
 
-**Console UI:** Truy cập `http://localhost:9001` để quản lý bucket, xem/tải file ảnh. Dùng `minioadmin/minioadmin`.
+**Console UI:** Truy cập `http://localhost:<MINIO_CONSOLE_PORT>` để quản lý bucket, xem/tải file ảnh. Dùng `minioadmin/minioadmin`.
 
 **Lệnh khởi động container:** `server /data --console-address ":9001"` — chạy MinIO server lưu data vào `/data` và mở console trên port 9001.
 
@@ -193,7 +193,7 @@ AI Worker phát hiện lửa
 
 **Kết nối từ Spring Boot** (trong `application.yml`):
 ```yaml
-minio.endpoint: http://localhost:9000
+minio.endpoint: http://localhost:<MINIO_API_PORT>
 minio.access-key: minioadmin
 minio.secret-key: minioadmin
 minio.bucket: snapshots
@@ -209,11 +209,11 @@ minio.bucket: snapshots
 |---|---|
 | Image | `adminer:4.8.1` |
 | Container | `firesafe-adminer` |
-| Port | `8081:8080` |
-| UI | http://localhost:8081 |
+| Port | Runtime `ADMINER_PORT` → container `8080` (manual default `8081`) |
+| UI | `http://localhost:<ADMINER_PORT>` |
 
 **Cách kết nối:**
-1. Mở `http://localhost:8081`
+1. Mở `http://localhost:<ADMINER_PORT>`
 2. Chọn **System:** `MySQL`
 3. **Server:** `firesafe-mariadb` *(tên container — đã được điền sẵn qua `ADMINER_DEFAULT_SERVER`)*
 4. **Username:** `firesafe` | **Password:** `firesafe` | **Database:** `firesafe`
@@ -231,11 +231,11 @@ minio.bucket: snapshots
 |---|---|
 | Image | `redis/redisinsight:latest` |
 | Container | `firesafe-redisinsight` |
-| Port | `5540:5540` |
-| UI | http://localhost:5540 |
+| Port | Runtime `REDISINSIGHT_PORT` → container `5540` (manual default `5540`) |
+| UI | `http://localhost:<REDISINSIGHT_PORT>` |
 
 **Cách kết nối:**
-1. Mở `http://localhost:5540`
+1. Mở `http://localhost:<REDISINSIGHT_PORT>`
 2. Click **Add Redis Database**
 3. **Host:** `firesafe-redis` | **Port:** `6379`
 4. Click **Add Redis Database**

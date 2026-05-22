@@ -74,11 +74,10 @@ Runtime metadata is written under `.runtime/`:
 | File | Source |
 |---|---|
 | `.runtime/ports.env` | Local service ports selected at startup |
-| `.runtime/logs/docker.log` | Docker infrastructure |
-| `.runtime/logs/backend.log` | Spring Boot stdout |
-| `.runtime/logs/backend.err.log` | Spring Boot stderr |
-| `.runtime/logs/frontend.log` | Next.js stdout |
-| `.runtime/logs/frontend.err.log` | Next.js stderr |
+| `.runtime/logs/docker.log` | Docker infrastructure status and logs |
+| `.runtime/logs/backend.log` | Spring Boot stdout/stderr |
+| `.runtime/logs/frontend.log` | Next.js stdout/stderr |
+| `.runtime/logs/ai-worker.log` | AI Worker stdout/stderr |
 
 Stop runtime and remove `.runtime/`:
 
@@ -94,7 +93,7 @@ Aggressive cleanup:
 
 `up` picks the preferred ports first; if a port is busy before startup, it moves to the next free port and records the result in `.runtime/ports.env`.
 
-`down` stops runtime and deletes `.runtime/`. `clean` also removes Compose containers/images/volumes.
+`down` stops verified runtime processes, stops Docker infra, and deletes `.runtime/`. `clean` also removes Compose containers, volumes, and orphans for this project, plus generated local artifacts. It does not remove shared Docker images.
 
 ### 2. Manual backend/frontend start
 
@@ -197,7 +196,6 @@ AI Worker logs are written to:
 
 ```text
 .runtime/logs/ai-worker.log
-.runtime/logs/ai-worker.err.log
 ```
 
 ---
@@ -353,7 +351,7 @@ Default model order: `video-detect/models/wildfire-smoke-fire.pt`, then `video-d
 ## Notes On Accuracy
 
 - The backend, frontend, mock worker, local infrastructure, and AI local-video detection MVP are present in this repository.
-- AI production integration is not complete yet: RTSP loop, metrics, ONNX/TensorRT export are planned next steps.
+- AI Worker RTSP preview and YOLO detection are implemented for local development; metrics and ONNX/TensorRT export are planned next steps.
 - The current AI worker quality depends entirely on the local `.pt` model supplied in `ai-worker/models/`.
 - Default credentials and secrets are development-only.
 - Generated folders such as `backend/target/`, `frontend/.next/`, `frontend/node_modules/`, and Python `venv/` may contain machine-specific paths and should not be treated as source of truth.

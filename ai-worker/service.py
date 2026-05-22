@@ -9,7 +9,8 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from src.camera_worker import CameraWorker, CameraWorkerConfig
-from src.config import DEFAULT_MODEL_PATH
+from src.config import DEFAULT_MODEL_PATH, FALLBACK_MODEL_PATH, resolve_model_path
+from src.detector import validate_model_path
 
 WORKERS: dict[int, CameraWorker] = {}
 WORKERS_LOCK = threading.Lock()
@@ -166,7 +167,10 @@ def parse_args():
     parser = argparse.ArgumentParser(description="FireSafe AI Worker HTTP service for RTSP preview and detection.")
     parser.add_argument("--host", default="127.0.0.1", help="Service bind host")
     parser.add_argument("--port", type=int, default=8090, help="Service port")
-    parser.add_argument("--model", default=str(DEFAULT_MODEL_PATH), help="Path to YOLO .pt model")
+    parser.add_argument(
+        "--model",
+        help=f"Path to YOLO .pt model (default: {DEFAULT_MODEL_PATH}, fallback: {FALLBACK_MODEL_PATH})",
+    )
     parser.add_argument("--conf", type=float, default=0.25, help="Confidence threshold")
     parser.add_argument("--backend-url", default=os.getenv("BACKEND_URL", "http://localhost:8080"), help="Backend API base URL")
     parser.add_argument("--username", default="admin", help="Backend login username")
@@ -183,10 +187,12 @@ def parse_args():
 
 def main():
     args = parse_args()
-    if not Path(args.model).exists():
-        raise FileNotFoundError(f"Model not found: {args.model}")
+    model_path = resolve_model_path(args.model)
+    validate_model_path(model_path)
+    args.model = str(model_path)
     server = AIWorkerServer((args.host, args.port), AIWorkerHandler, args)
     print(f"FireSafe AI Worker service listening on http://{args.host}:{args.port}")
+    print(f"Using model: {model_path}")
     server.serve_forever()
 
 

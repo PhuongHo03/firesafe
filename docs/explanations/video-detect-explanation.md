@@ -75,14 +75,32 @@ Kết hợp nhiều cờ:
 
 ---
 
+## 🚀 Cách chạy thủ công
+
+Nếu không dùng `run-video-detect.ps1`, chạy trực tiếp trong `video-detect/`:
+
+```powershell
+cd video-detect
+python -m venv venv
+.\venv\Scripts\python.exe -m pip install -r requirements.txt
+.\venv\Scripts\python.exe detect_video.py --source path\to\video.mp4 --save
+```
+
+Chạy với model khác:
+
+```powershell
+.\venv\Scripts\python.exe detect_video.py --source path\to\video.mp4 --model .\models\best.pt --conf 0.4
+```
+
+---
+
 ## ⚙️ Luồng chạy
 
 ```text
 run-video-detect.ps1
     → tạo video-detect/venv nếu chưa có
-    → activate venv
-    → pip install -r requirements.txt
-    → python detect_video.py @DetectArgs
+    → cài dependencies bằng video-detect/venv/Scripts/python.exe
+    → chạy detect_video.py @DetectArgs bằng Python trong venv
         → src/config.py parse args
         → chọn model
         → src/detector.py load YOLO

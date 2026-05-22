@@ -7,6 +7,8 @@
 ```
 backend/
 │
+├── .env.local.example               ← Mẫu env preset camera RTSP khi chạy từ source
+├── .env.local                       ← Env local/private: RTSP preset, không commit
 ├── pom.xml                          ← Khai báo dependencies, build config (Maven)
 ├── mvnw / mvnw.cmd                  ← Maven Wrapper — chạy Maven không cần cài trên máy
 │
@@ -82,8 +84,56 @@ backend/
 ## 📌 Lưu ý về cấu trúc
 
 - **`mvnw` / `mvnw.cmd`** là Maven Wrapper scripts — cho phép build project mà không cần cài Maven trên máy. Chạy `./mvnw spring-boot:run` thay cho `mvn spring-boot:run`
-- Các file `.gitattributes`, `.gitignore`, `HELP.md` ở root `backend/` là file sinh tự động bởi Spring Initializr — không ảnh hưởng đến logic ứng dụng
+- Các file `.gitattributes`, `.gitignore` ở root `backend/` là file sinh tự động bởi Spring Initializr — không ảnh hưởng đến logic ứng dụng
 
+
+---
+
+## 🚀 Cách chạy
+
+Cách chính từ project root:
+
+```powershell
+.\setup.ps1 up
+```
+
+`setup.ps1` tự chọn port runtime, chuẩn bị Java 21 nếu cần, start Docker infra rồi chạy backend bằng Maven Wrapper. Port thực tế xem trong:
+
+```powershell
+Get-Content .runtime\ports.env
+```
+
+Nếu chạy thủ công:
+
+```powershell
+docker compose -f docker-compose.dev.yml up -d
+cd backend
+.\mvnw.cmd spring-boot:run
+```
+
+Backend mặc định chạy tại:
+
+```text
+http://localhost:8080
+```
+
+Khi dùng `setup.ps1 up`, backend có thể chạy ở `http://localhost:<BACKEND_PORT>` nếu port mặc định bận.
+
+---
+
+## 🔧 Cấu hình
+
+### `.env.local`
+
+File này dùng cho cấu hình local/private của backend. Hiện tại chủ yếu để khai báo camera RTSP preset cho dev:
+
+```env
+FIRESAFE_PRESET_CAMERA_RTSP_URL=rtsp://user:password@camera-host:554/stream
+FIRESAFE_PRESET_CAMERA_NAME=Camera RTSP Preset
+FIRESAFE_PRESET_CAMERA_LOCATION=Preset
+```
+
+Nếu `FIRESAFE_PRESET_CAMERA_RTSP_URL` rỗng, backend không seed camera preset. Giữ `backend/.env.local` local, không commit credential thật; chỉ commit `backend/.env.local.example`.
 
 ---
 

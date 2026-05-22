@@ -11,7 +11,7 @@
 |---|---|
 | **Giai đoạn đang thực hiện** | 🔄 Giai đoạn 6 — Phát triển & Tối ưu AI Model |
 | **Giai đoạn tiếp theo** | ⏳ Giai đoạn 7 — Giám sát Hệ thống |
-| **Workspace root** | `d:\firesafe\` |
+| **Workspace root** | project root |
 
 ## 🔜 Việc tiếp theo cần làm (Giai đoạn 6)
 
@@ -92,7 +92,7 @@
 ## 📁 Cấu trúc Project Hiện tại
 
 ```
-d:\firesafe\
+project-root/
 │
 ├── docs/
 │   ├── plannings/
@@ -240,11 +240,11 @@ Get-Content .runtime\ports.env
 **Payload mẫu AI Worker gửi về (`POST /api/v1/alerts`):**
 ```json
 {
-  "camera_id": 1,
+  "cameraId": 1,
   "confidence": 0.91,
   "label": "fire",
-  "image_url": "http://minio:9000/snapshots/cam-001/2026-04-22T10-30-00.jpg",
-  "detected_at": "2026-04-22T10:30:00Z"
+  "imageUrl": "http://localhost:<MINIO_API_PORT>/snapshots/cam-001/...png",
+  "detectedAt": "2026-05-20T10:30:00"
 }
 ```
 
@@ -349,12 +349,12 @@ npm run dev   # http://localhost:3000
 
 **Mục tiêu:** Xây dựng AI Worker thật thay thế Mock, kết nối vào backend đã ổn định.
 
-**Quyết định hiện tại:** Dùng pretrained model `odiug77/wildfire-smoke-fire` từ Hugging Face để test nhận diện luôn, chưa training lại ở bước đầu.
+**Quyết định hiện tại:** Đã chuyển model chính sang `TommyNgx/YOLOv10-Fire-and-Smoke-Detection` để test nhận diện fire/smoke. Model `odiug77/wildfire-smoke-fire` từ Hugging Face vẫn là tham chiếu/thử nghiệm trước đó; hiện chưa training lại ở bước đầu.
 
 **Những gì đã làm:**
 - Tách `video-detect/` thành CLI debug video/image offline riêng, chỉ dùng `--source`, `--model`, `--conf`, `--show`, `--save`.
-- Giữ `ai-worker/` là HTTP service chính cho RTSP preview, detect realtime và gửi alert.
-- Tách AI Worker service thành các module: `config.py`, `camera_worker.py`, `snapshot.py`, `storage.py`, `backend_client.py`.
+- Giữ `ai-worker/` là HTTP service chính cho RTSP preview, detect realtime và gửi alert; Python service tự fallback model `wildfire-smoke-fire.pt` → `best.pt` nếu không truyền `--model`.
+- Tách AI Worker service thành các module: `config.py`, `camera_worker.py`, `detector.py`, `snapshot.py`, `storage.py`, `backend_client.py`.
 - `camera_worker.py` hiện tách 2 thread: RTSP reader cập nhật MJPEG preview liên tục, YOLO detector lấy frame mới nhất theo interval để detect/alert.
 - Thêm guard chống spam camera: bấm Start nhiều lần không tạo thêm RTSP session; reconnect backoff 5s → 10s → 20s → 30s.
 - Thêm backend `PresetCameraSeeder` đọc `backend/.env.local` để seed camera RTSP làm sẵn khi `FIRESAFE_PRESET_CAMERA_RTSP_URL` khác rỗng; bỏ seed camera fake `Camera-Test-01`.
@@ -363,7 +363,7 @@ npm run dev   # http://localhost:3000
 - `setup.ps1 up` tự kiểm tra/tạo runtime cần thiết: Java 21 project-local nếu máy chưa có, `frontend/node_modules` qua `npm install`, AI Worker `venv` + `requirements.txt`, và `frontend/.env.local` với `NEXT_PUBLIC_API_URL` + `NEXT_PUBLIC_AI_WORKER_URL`.
 - `setup.ps1 down` chỉ dừng AI Worker/frontend/backend/infra và xóa `.runtime/`; giữ `venv`, `node_modules`, `.next`, `backend/target`, local JDK để lần sau khởi động nhanh.
 - `setup.ps1 clean` làm toàn bộ việc của `down`, dọn Docker container/volume/orphan thuộc compose project, không xóa shared images, rồi xóa thêm `ai-worker/venv/`, `frontend/node_modules/`, `frontend/.next/`, `backend/target/`, local JDK `jdk-21.0.3+9/`.
-- `setup.ps1 up` quản lý AI Worker như host service; `run-ai-worker.ps1` đã được thay thế.
+- `setup.ps1 up` quản lý AI Worker như host service cùng backend/frontend/infra.
 - Cập nhật `/cameras`: nhập RTSP URL, Start/Stop Detect, MJPEG preview lớn hơn, delete camera xử lý đúng response `204 No Content`.
 - Fix hydration/token issues bằng cách đọc cookie auth sau mount trong `useEffect`.
 - Tạo/cập nhật `docs/explanations/ai-worker-explanation.md`.

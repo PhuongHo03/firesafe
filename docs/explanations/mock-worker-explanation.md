@@ -103,8 +103,8 @@ mock_worker
 
 ```text
 [FIRESAFE] Mock AI Worker - E2E Test Suite
-Backend : http://localhost:8080
-MinIO   : http://localhost:9000
+Backend : http://localhost:<BACKEND_PORT>
+MinIO   : http://localhost:<MINIO_API_PORT>
 
 ============================================================
   TEST 1 — JWT Authentication
@@ -119,7 +119,7 @@ MinIO   : http://localhost:9000
 ============================================================
   TEST 3 — MinIO Upload
 ============================================================
-[10:30:01] ✅ Upload OK — http://localhost:9000/snapshots/cam-001/...
+[10:30:01] ✅ Upload OK — http://localhost:<MINIO_API_PORT>/snapshots/cam-001/...
 
 ============================================================
   TEST 4 — Alert Pipeline

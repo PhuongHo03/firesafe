@@ -14,7 +14,8 @@ ai-worker/
 └── src/
     ├── __init__.py
     ├── camera_worker.py               ← RTSP reader thread + YOLO detector thread + gửi alert
-    ├── config.py                      ← Đường dẫn model mặc định cho service
+    ├── config.py                      ← Đường dẫn model mặc định/fallback cho service
+    ├── detector.py                    ← Wrapper Ultralytics YOLO + thông báo lỗi model thiếu
     ├── snapshot.py                    ← Encode annotated frame thành PNG bytes
     ├── storage.py                     ← Upload snapshot lên MinIO
     └── backend_client.py              ← Login backend + POST /api/v1/alerts
@@ -51,7 +52,7 @@ CLI debug video/image local đã tách sang `video-detect/`. Luồng này chạy
 | Thuộc tính | Giá trị |
 |---|---|
 | Framework | Ultralytics YOLO / PyTorch |
-| Weight file | `.pt`: ưu tiên `wildfire-smoke-fire.pt`, fallback `best.pt` khi chạy qua `setup.ps1` |
+| Weight file | `.pt`: ưu tiên `wildfire-smoke-fire.pt`, fallback `best.pt` trong Python service |
 | Classes kỳ vọng | `smoke`, `fire` |
 | Input điển hình | RGB image/video, 640x640 |
 
@@ -62,7 +63,7 @@ ai-worker\models\wildfire-smoke-fire.pt
 ai-worker\models\best.pt
 ```
 
-Khi chạy bằng `setup.ps1 up`, script chọn `wildfire-smoke-fire.pt` trước; nếu không có thì fallback sang `best.pt`. Khi chạy `service.py` thủ công, default argparse là `models/wildfire-smoke-fire.pt`; muốn dùng `best.pt` thì truyền `--model ./models/best.pt`.
+Khi không truyền `--model`, Python service chọn `wildfire-smoke-fire.pt` trước; nếu không có thì fallback sang `best.pt`. `setup.ps1 up` không tự chọn model nữa, chỉ gọi service và để Python xử lý fallback. Nếu thiếu cả hai model, `src/detector.py` báo lỗi rõ trong `.runtime/logs/ai-worker.log`. Muốn dùng `best.pt` hoặc model `.pt` khác thì truyền `--model`, ví dụ `--model ./models/best.pt` hoặc `--model ./models/custom.pt`.
 
 ---
 
@@ -104,12 +105,11 @@ http://localhost:<AI_WORKER_PORT>/health
 
 Bình thường dùng `setup.ps1 up`. Nếu cần chạy riêng AI Worker service:
 
-```bash
+```powershell
 cd ai-worker
 python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-python service.py --port 8090 --model ./models/best.pt
+.\venv\Scripts\python.exe -m pip install -r requirements.txt
+.\venv\Scripts\python.exe service.py --port 8090 --model .\models\best.pt
 ```
 
 ---
@@ -120,7 +120,7 @@ python service.py --port 8090 --model ./models/best.pt
 |---|---:|---|---|
 | `--host` | Không | `127.0.0.1` | Host bind service |
 | `--port` | Không | `8090` | Port HTTP service |
-| `--model` | Không | `models/wildfire-smoke-fire.pt` | Path model YOLO `.pt`; fallback `best.pt` chỉ do `setup.ps1` chọn trước khi gọi service |
+| `--model` | Không | `models/wildfire-smoke-fire.pt`, fallback `models/best.pt` | Path model YOLO `.pt`; nếu truyền cờ này thì dùng đúng path đó và không fallback |
 | `--conf` | Không | `0.25` | Ngưỡng confidence |
 | `--backend-url` | Không | `http://localhost:8080` | Backend API base URL |
 | `--username` | Không | `admin` | User backend để login |
@@ -166,7 +166,7 @@ Alert payload gửi backend:
   "cameraId": 1,
   "confidence": 0.91,
   "label": "fire",
-  "imageUrl": "http://localhost:9000/snapshots/cam-001/...png",
+  "imageUrl": "http://localhost:<MINIO_API_PORT>/snapshots/cam-001/...png",
   "detectedAt": "2026-05-20T10:30:00"
 }
 ```

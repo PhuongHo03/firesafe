@@ -40,6 +40,14 @@ frontend/
 
 ---
 
+## 📌 Lưu ý về cấu trúc
+
+- `node_modules/` và `.next/` là generated folders: `setup.ps1 up`/`npm install`/Next dev server có thể tạo lại, không xem là source of truth.
+- `public/`, `.gitignore`, `AGENTS.md`, `CLAUDE.md` và các file cấu hình sinh sẵn/metadata khác không được liệt kê trong cây vì không phải luồng logic chính của frontend.
+- `frontend/.env.local` do `setup.ps1 up` tự tạo theo port runtime và không commit; `frontend/.env.local.example` là mẫu để chạy thủ công.
+
+---
+
 ## 🚀 Cách chạy
 
 Cách chính từ project root:

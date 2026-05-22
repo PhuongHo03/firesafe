@@ -391,17 +391,12 @@ function Start-AIWorker {
 
     $aiLog = Join-Path $LogsDir "ai-worker.log"
     $aiPid = Join-Path $PidsDir "ai-worker.pid"
-    $modelPath = Join-Path $AIWorkerDir "models\wildfire-smoke-fire.pt"
-    if (-not (Test-Path $modelPath)) {
-        $modelPath = Join-Path $AIWorkerDir "models\best.pt"
-    }
-
     $command = 'if (-not (Test-Path ''venv'')) { python -m venv venv }; ' +
         '.\venv\Scripts\python.exe -m pip --disable-pip-version-check install -r requirements.txt | Out-Null; ' +
         '$env:BACKEND_URL = ''http://localhost:' + $script:Ports.BACKEND_PORT + '''; ' +
         '$env:MINIO_URL = ''localhost:' + $script:Ports.MINIO_API_PORT + '''; ' +
         '.\venv\Scripts\python.exe service.py --port ' + $script:Ports.AI_WORKER_PORT +
-        ' --model ''' + $modelPath + ''' --backend-url ''http://localhost:' + $script:Ports.BACKEND_PORT + ''' --minio-url ''localhost:' + $script:Ports.MINIO_API_PORT + ''''
+        ' --backend-url ''http://localhost:' + $script:Ports.BACKEND_PORT + ''' --minio-url ''localhost:' + $script:Ports.MINIO_API_PORT + ''''
 
     $loggedCommand = New-LoggedCommand $command $aiLog
     $process = Start-Process powershell `
