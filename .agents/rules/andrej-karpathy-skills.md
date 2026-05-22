@@ -1,69 +1,85 @@
----
-trigger: always_on
----
+# Claude Code Working Rules
 
-# CLAUDE.md
+Use these rules to reduce common coding-agent mistakes. They apply unless the user explicitly overrides them.
 
-Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
+## 1. Clarify before acting
 
-**Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
+- State assumptions before non-trivial work.
+- If the request has multiple valid meanings, ask or present the interpretations.
+- If the task is simple, do it directly; if it is behavior-changing or multi-file, define success criteria first.
+- If confused, stop and name the unclear point instead of guessing.
 
-## 1. Think Before Coding
+## 2. Read before writing
 
-**Don't assume. Don't hide confusion. Surface tradeoffs.**
+Before editing code/config/docs:
 
-Before implementing:
-- State your assumptions explicitly. If uncertain, ask.
-- If multiple interpretations exist, present them - don't pick silently.
-- If a simpler approach exists, say so. Push back when warranted.
-- If something is unclear, stop. Name what's confusing. Ask.
+1. Read the target file.
+2. Read immediate callers/config/tests/docs that define expected behavior.
+3. Check existing style and naming.
+4. Edit only after the current behavior is understood.
 
-## 2. Simplicity First
+Never change code based only on filename assumptions.
 
-**Minimum code that solves the problem. Nothing speculative.**
+## 3. Keep changes surgical
 
-- No features beyond what was asked.
-- No abstractions for single-use code.
-- No "flexibility" or "configurability" that wasn't requested.
-- No error handling for impossible scenarios.
-- If you write 200 lines and it could be 50, rewrite it.
+- Touch only files required by the request.
+- Do not refactor adjacent code unless required.
+- Do not rename, reformat, or reorganize unrelated code.
+- Remove only unused code created by your own changes.
+- Mention unrelated issues; do not fix them without approval.
 
-Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+Every changed line should trace to the user request.
 
-## 3. Surgical Changes
+## 4. Prefer the simplest working solution
 
-**Touch only what you must. Clean up only your own mess.**
+- No speculative features.
+- No abstractions for one-off logic.
+- No compatibility shims unless explicitly needed.
+- No extra validation/error handling for impossible internal states.
+- Match project conventions over personal preference.
 
-When editing existing code:
-- Don't "improve" adjacent code, comments, or formatting.
-- Don't refactor things that aren't broken.
-- Match existing style, even if you'd do it differently.
-- If you notice unrelated dead code, mention it - don't delete it.
+If a simpler approach exists, say so.
 
-When your changes create orphans:
-- Remove imports/variables/functions that YOUR changes made unused.
-- Don't remove pre-existing dead code unless asked.
+## 5. Use tools safely
 
-The test: Every changed line should trace directly to the user's request.
+- Prefer `Read`, `Edit`, `Glob`, `Grep` over shell commands for file work.
+- Use shell only for commands that truly need shell/runtime behavior.
+- Before destructive or shared-state actions, confirm unless user explicitly authorized scope.
+- Never use broad destructive commands against repo root or global system state.
+- In this repo, cleanup must stay scoped to FireSafe-owned paths/resources.
 
-## 4. Goal-Driven Execution
+## 6. Verify with the smallest relevant check
 
-**Define success criteria. Loop until verified.**
+Pick the lowest-cost check that proves intent:
 
-Transform tasks into verifiable goals:
-- "Add validation" → "Write tests for invalid inputs, then make them pass"
-- "Fix the bug" → "Write a test that reproduces it, then make it pass"
-- "Refactor X" → "Ensure tests pass before and after"
+- Syntax/config change → parser/config validation.
+- Script change → parse + targeted unsafe-pattern scan.
+- Backend change → focused Maven test/compile when possible.
+- Frontend change → typecheck/build or browser check for UI behavior.
+- Docs change → read changed section or grep expected anchors.
 
-For multi-step tasks, state a brief plan:
-```
-1. [Step] → verify: [check]
-2. [Step] → verify: [check]
-3. [Step] → verify: [check]
-```
+Do not claim tests pass unless they ran.
 
-Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+## 7. Update project context when behavior changes
 
----
+If code/config behavior changes:
 
-**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
+1. Update the matching `docs/explanations/*-explanation.md`.
+2. Update the footer phase if needed.
+3. Update `docs/plannings/planning.md` when structure, runtime behavior, ports, services, or explanation files change.
+
+Do not create extra docs unless requested or required by project rules.
+
+## 8. Communicate tersely but completely
+
+- Before tools: say what will be checked/changed.
+- During work: report only key findings, blockers, or direction changes.
+- Final response: what changed + what was verified + any remaining risk.
+- Surface skipped checks explicitly.
+
+## 9. Fail loud
+
+- If verification fails, say exactly what failed.
+- If a check was not run, say why.
+- If current state conflicts with memory/docs, trust current source and update stale docs if relevant.
+- Do not hide uncertainty behind “done”.

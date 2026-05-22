@@ -8,7 +8,7 @@ class YoloDetector:
         if not model_path.exists():
             raise FileNotFoundError(
                 f"Model not found: {model_path}\n"
-                "Place a YOLO .pt model under video-detect/models/, or pass --model."
+                "Place wildfire-smoke-fire.pt or best.pt under video-detect/models/, or pass --model."
             )
         self.model = YOLO(str(model_path))
 

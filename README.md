@@ -147,7 +147,7 @@ http://localhost:3000
 Windows:
 
 ```powershell
-.\run-mock-worker.ps1
+.\mock-worker\run-mock-worker.ps1
 ```
 
 Linux/macOS:
@@ -177,7 +177,7 @@ Windows local runtime starts the AI Worker service automatically:
 
 Then open `/cameras`, add an RTSP URL, and click **Start Detect**. The AI Worker service reads RTSP continuously, serves MJPEG preview to the UI, and posts alerts to backend when YOLO detects fire/smoke.
 
-To prefill one demo camera from env, edit:
+To prefill one preset camera from env, edit:
 
 ```text
 backend/.env.local
@@ -186,9 +186,9 @@ backend/.env.local
 Set:
 
 ```env
-FIRESAFE_DEMO_CAMERA_RTSP_URL=rtsp://user:password@192.168.1.50:554/stream1
-FIRESAFE_DEMO_CAMERA_NAME=Camera RTSP Demo
-FIRESAFE_DEMO_CAMERA_LOCATION=Demo
+FIRESAFE_PRESET_CAMERA_RTSP_URL=rtsp://user:password@192.168.1.50:554/stream1
+FIRESAFE_PRESET_CAMERA_NAME=Camera RTSP Preset
+FIRESAFE_PRESET_CAMERA_LOCATION=Preset
 ```
 
 After `setup.ps1 up`, backend seeds that camera into DB if the RTSP URL is non-empty.
@@ -237,11 +237,20 @@ AI Worker logs are written to:
 
 ### Video detect offline pipeline
 
+Run manually when you want to test a YOLO model against a local video/image:
+
+```powershell
+.\video-detect\run-video-detect.ps1 --source path\to\video.mp4 --save
+```
+
+Default model order: `video-detect/models/wildfire-smoke-fire.pt`, then `video-detect/models/best.pt`.
+
 | Step | Component | Action |
 |---:|---|---|
-| 1 | `video-detect/detect_video.py` | Loads CLI config and orchestrates the run |
-| 2 | `video-detect/src/detector.py` | Runs YOLO detection on local video/image |
-| 3 | Local output | Saves annotated video/image under `video-detect/runs/detect` when `--save` is used |
+| 1 | `video-detect/run-video-detect.ps1` | Creates venv, installs deps, forwards args |
+| 2 | `video-detect/detect_video.py` | Loads CLI config and orchestrates the run |
+| 3 | `video-detect/src/detector.py` | Runs YOLO detection on local video/image |
+| 4 | Local output | Saves annotated video/image under `video-detect/runs/detect` when `--save` is used |
 
 ---
 
@@ -253,7 +262,7 @@ AI Worker logs are written to:
 | Local infrastructure | `docker compose -f docker-compose.dev.yml up -d` | MariaDB, Redis, RabbitMQ, MinIO, Adminer, RedisInsight | Implemented |
 | Backend dev | `backend/mvnw` | Spring Boot API on host machine | Implemented |
 | Frontend dev | `npm run dev` in `frontend/` | Next.js dashboard | Implemented |
-| Mock E2E | `./run-mock-worker.ps1` | Synthetic alert pipeline test | Implemented |
+| Mock E2E | `./mock-worker/run-mock-worker.ps1` | Synthetic alert pipeline test | Implemented |
 | AI Worker service | `setup.ps1 up` | RTSP preview + YOLO detection + alert posting | In progress |
 | Production compose | `docker-compose.yml` | Nginx, frontend, API, AI worker, monitoring | Planned |
 
@@ -283,7 +292,8 @@ AI Worker logs are written to:
 │
 ├── mock-worker/                     Synthetic E2E backend tester
 │   ├── mock_worker.py
-│   └── requirements.txt
+│   ├── requirements.txt
+│   └── run-mock-worker.ps1
 │
 ├── ai-worker/                       YOLO RTSP preview + detection service
 │   ├── service.py
@@ -294,6 +304,7 @@ AI Worker logs are written to:
 ├── video-detect/                    Offline YOLO video/image debug CLI
 │   ├── detect_video.py
 │   ├── requirements.txt
+│   ├── run-video-detect.ps1
 │   ├── src/
 │   ├── models/
 │   └── runs/
@@ -303,8 +314,7 @@ AI Worker logs are written to:
 │   └── plannings/                   Roadmap and current project context
 │
 ├── docker-compose.dev.yml           Local infrastructure stack
-├── setup.ps1                        Windows runtime manager
-└── run-mock-worker.ps1              Windows mock-worker runner
+└── setup.ps1                        Windows runtime manager
 ```
 
 ---
@@ -319,6 +329,7 @@ AI Worker logs are written to:
 | `docs/explanations/infrastructure-explanation.md` | `docker-compose.dev.yml` infrastructure details |
 | `docs/explanations/mock-worker-explanation.md` | Mock AI worker E2E flow |
 | `docs/explanations/ai-worker-explanation.md` | AI Worker RTSP preview and YOLO detection service |
+| `docs/explanations/video-detect-explanation.md` | Offline YOLO video/image debug CLI |
 
 ---
 

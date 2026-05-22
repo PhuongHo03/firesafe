@@ -56,10 +56,10 @@ alert:
   debounce-ttl-seconds: 300  # 5 minutes
 
 firesafe:
-  demo-camera:
-    name: ${FIRESAFE_DEMO_CAMERA_NAME:Camera RTSP Demo}
-    location: ${FIRESAFE_DEMO_CAMERA_LOCATION:Demo}
-    rtsp-url: ${FIRESAFE_DEMO_CAMERA_RTSP_URL:}
+  preset-camera:
+    name: ${FIRESAFE_PRESET_CAMERA_NAME:Camera RTSP Preset}
+    location: ${FIRESAFE_PRESET_CAMERA_LOCATION:Preset}
+    rtsp-url: ${FIRESAFE_PRESET_CAMERA_RTSP_URL:}
 
 management:
   endpoints:

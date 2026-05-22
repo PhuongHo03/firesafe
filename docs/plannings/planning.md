@@ -19,7 +19,7 @@
 - [x] Tải model `.pt` vào `ai-worker/models/`
 - [x] Chạy thử với video local và kiểm tra output bounding box
 - [x] Mở rộng AI Worker thành module nhỏ + hỗ trợ upload MinIO + `POST /api/v1/alerts`
-- [x] Thêm `setup.ps1 up/down/clean` để quản lý runtime local, tự chọn port trống, logs và `.runtime/ports.env`; `down`/`clean` đều xóa `.runtime/`
+- [x] Thêm `setup.ps1 up/down/clean` để quản lý runtime local, tự chọn port trống, cấp port infra từ dải `7001+`, logs và `.runtime/ports.env`; `up` tự chuẩn bị deps/env, `down` chỉ dừng runtime đã xác thực PID metadata và xóa `.runtime/`, `clean` xóa thêm generated artifacts + Docker volume/orphan thuộc compose project, không xóa shared images
 - [x] Chạy E2E thật với AI Worker service, backend, MinIO, Redis, RabbitMQ
 - [x] Mở rộng sang RTSP camera preview + detect realtime trên UI `/cameras`
 - [x] Tách CLI video local sang `video-detect/`, không backend/MinIO/auth/alert
@@ -69,7 +69,7 @@
                              ┌────────▼────────┐
                              │  Spring Worker  │
                              │ (AMQP Consumer) │
-                             │ Zalo ZNS/Telegram│
+                             │    Telegram     │
                              └─────────────────┘
 
   ┌──────────────────────────────────────────────┐
@@ -102,7 +102,8 @@ d:\firesafe\
 │       ├── infrastructure-explanation.md  ← Giải thích docker-compose.dev.yml
 │       ├── mock-worker-explanation.md     ← Giải thích mock-worker/
 │       ├── frontend-explanation.md        ← Giải thích frontend/ (Next.js)
-│       └── ai-worker-explanation.md       ← Giải thích ai-worker/ RTSP preview + YOLO detect realtime
+│       ├── ai-worker-explanation.md       ← Giải thích ai-worker/ RTSP preview + YOLO detect realtime
+│       └── video-detect-explanation.md    ← Giải thích video-detect/ CLI debug offline
 │
 ├── .agents/rules/
 │   ├── andrej-karpathy-skills.md          ← Quy tắc viết code
@@ -113,9 +114,10 @@ d:\firesafe\
 │   ├── pom.xml
 │   └── src/...
 │
-├── mock-worker/                           ← Python E2E test suite (Giai đoạn 4)
+├── mock-worker/                           ← Python E2E test suite độc lập (Giai đoạn 4)
 │   ├── mock_worker.py
-│   └── requirements.txt
+│   ├── requirements.txt
+│   └── run-mock-worker.ps1
 │
 ├── ai-worker/                             ← YOLO RTSP service chính (host process)
 │   ├── service.py                         ← HTTP API: start/stop/status/MJPEG stream
@@ -131,6 +133,7 @@ d:\firesafe\
 ├── video-detect/                          ← CLI debug video/image offline, tách khỏi AI Worker service
 │   ├── detect_video.py
 │   ├── requirements.txt
+│   ├── run-video-detect.ps1
 │   ├── src/
 │   ├── models/
 │   └── runs/
@@ -150,10 +153,9 @@ d:\firesafe\
 │   ├── src/lib/
 │   │   ├── api.ts                         ← API client + types
 │   │   └── auth.ts                        ← JWT cookie helpers
-│   └── .env.local                         ← NEXT_PUBLIC_API_URL
+│   └── .env.local                         ← Auto-generated: NEXT_PUBLIC_API_URL + NEXT_PUBLIC_AI_WORKER_URL
 │
-├── setup.ps1                              ← Runtime manager: up/down/clean infra + backend + frontend
-├── run-mock-worker.ps1                    ← Script chạy mock-worker bằng mock-worker/venv
+├── setup.ps1                              ← Runtime manager: up/down/clean infra + backend + frontend + AI Worker
 └── docker-compose.dev.yml                 ← 6 service: MariaDB, Redis, RabbitMQ,
                                              MinIO, Adminer, RedisInsight
 ```
@@ -205,7 +207,7 @@ Get-Content .runtime\ports.env
 | **Cache / Debounce** | Redis | Chống spam alert |
 | **Object Storage** | MinIO | Lưu ảnh snapshot (S3-compatible, tự host) |
 | **Broker** | RabbitMQ | Message queue gửi notification async |
-| **Worker** | Spring AMQP Consumer | Consume queue → gửi Zalo ZNS / Telegram |
+| **Worker** | Spring AMQP Consumer | Consume queue → gửi Telegram notification |
 | **AI Worker** | Python + FFmpeg + YOLO + ONNX | Đọc RTSP, inference, gửi alert về backend |
 | **API Docs** | Springdoc OpenAPI | Swagger UI tại `/swagger-ui.html` |
 | **Monitoring** | Prometheus + Grafana | Thu thập metrics, dashboard IT |
@@ -257,7 +259,7 @@ Get-Content .runtime\ports.env
 
 **Những gì đã làm:**
 - Spring Boot 3.5 + Maven, Java 21
-- Flyway migrations: `V1__init_schema.sql` (5 bảng + indexes), `V2__seed_data.sql` (roles, admin, camera test)
+- Flyway migrations: `V1__init_schema.sql` (5 bảng + indexes), `V2__seed_data.sql` (roles, admin mặc định; không seed camera fake)
 - Entities: `User`, `Role`, `Camera`, `Alert` với JPA mapping đúng quan hệ
 - Repositories: `UserRepository`, `CameraRepository`, `AlertRepository` với pagination
 - JWT Security: `JwtUtils`, `JwtAuthFilter`, `UserDetailsServiceImpl`, `SecurityConfig`
@@ -272,7 +274,7 @@ Get-Content .runtime\ports.env
 **Lưu ý quan trọng:**
 - Default admin: `admin` / `admin123`
 - JWT secret phải thay bằng key dài hơn khi deploy production
-- `NotificationWorker` có TODO — chờ tích hợp Zalo/Telegram ở Giai đoạn 3
+- `NotificationWorker` ban đầu là placeholder; Giai đoạn 3 đã tích hợp Telegram notification + retry
 
 ---
 
@@ -289,7 +291,7 @@ Get-Content .runtime\ports.env
 
 **Lưu ý:**
 - Telegram mặc định `enabled=false` — set `TELEGRAM_ENABLED=true` + `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` để bật
-- Zalo ZNS có thể bổ sung sau bằng cách tạo `ZaloNotificationService` tương tự
+- Kênh notification hiện tại là Telegram; các kênh khác chỉ nên thêm khi có yêu cầu thật
 
 ---
 
@@ -301,11 +303,12 @@ Get-Content .runtime\ports.env
 **Những gì đã làm:**
 - `mock-worker/mock_worker.py` — E2E test suite 5 test case:
   - Test 1: JWT login (`admin`/`admin123`) → nhận token
-  - Test 2: Tạo ảnh PNG giả bằng Pillow → upload MinIO → lấy URL
-  - Test 3: `POST /api/v1/alerts` → verify alert trong DB qua `GET /api/v1/alerts/{id}`
-  - Test 4: Gửi 10 alerts liên tiếp → verify Redis debounce (chỉ 1 notification)
-  - Test 5: `GET /api/v1/cameras` → verify camera API
+  - Test 2: `GET /api/v1/cameras` → lấy camera đầu tiên làm camera test
+  - Test 3: Tạo ảnh PNG giả bằng Pillow → upload MinIO → lấy URL
+  - Test 4: `POST /api/v1/alerts` → verify alert trong DB qua `GET /api/v1/alerts/{id}`
+  - Test 5: Gửi 10 alerts liên tiếp → verify Redis debounce (chỉ 1 notification)
 - Hỗ trợ chạy từng test riêng: `--test minio|pipeline|debounce`
+- Mock-worker chỉ chạy khi gọi `mock-worker/run-mock-worker.ps1` hoặc chạy thủ công, không nằm trong luồng `setup.ps1 up`.
 
 > ✅ **Checkpoint:** Backend là "hộp đen" hoàn chỉnh. Từ đây, Frontend và AI Worker chỉ cần tuân theo API Contract là tích hợp được.
 
@@ -329,7 +332,7 @@ Get-Content .runtime\ports.env
 - **Alert Detail** (`/alerts/[id]`) — ảnh hiện trường, thông tin đầy đủ
 - **Cameras** (`/cameras`) — card grid camera, thêm/xóa (chỉ ADMIN)
 - **Sidebar** — navigation chung, logout, hiển thị username/role
-- `.env.local` — `NEXT_PUBLIC_API_URL=http://localhost:8080`
+- `frontend/.env.local` — được `setup.ps1 up` tự tạo từ port runtime: `NEXT_PUBLIC_API_URL` và `NEXT_PUBLIC_AI_WORKER_URL`
 
 **Chạy frontend:**
 ```powershell
@@ -342,7 +345,7 @@ npm run dev   # http://localhost:3000
 ### 🔄 Giai đoạn 6 — Phát triển & Tối ưu AI Model *(Tuần 10–13)*
 
 > **Trạng thái: ĐANG THỰC HIỆN**
-> **Context cho session mới:** Đọc [`docs/explanations/ai-worker-explanation.md`](../explanations/ai-worker-explanation.md) để hiểu MVP detect video local bằng YOLO.
+> **Context cho session mới:** Đọc [`docs/explanations/ai-worker-explanation.md`](../explanations/ai-worker-explanation.md) để hiểu RTSP service; đọc [`docs/explanations/video-detect-explanation.md`](../explanations/video-detect-explanation.md) để hiểu CLI debug video/image offline.
 
 **Mục tiêu:** Xây dựng AI Worker thật thay thế Mock, kết nối vào backend đã ổn định.
 
@@ -354,10 +357,13 @@ npm run dev   # http://localhost:3000
 - Tách AI Worker service thành các module: `config.py`, `camera_worker.py`, `snapshot.py`, `storage.py`, `backend_client.py`.
 - `camera_worker.py` hiện tách 2 thread: RTSP reader cập nhật MJPEG preview liên tục, YOLO detector lấy frame mới nhất theo interval để detect/alert.
 - Thêm guard chống spam camera: bấm Start nhiều lần không tạo thêm RTSP session; reconnect backoff 5s → 10s → 20s → 30s.
-- Thêm backend `DemoCameraSeeder` đọc `backend/.env.local` để seed camera RTSP demo khi `FIRESAFE_DEMO_CAMERA_RTSP_URL` khác rỗng.
+- Thêm backend `PresetCameraSeeder` đọc `backend/.env.local` để seed camera RTSP làm sẵn khi `FIRESAFE_PRESET_CAMERA_RTSP_URL` khác rỗng; bỏ seed camera fake `Camera-Test-01`.
 - Thêm dependencies service `ultralytics`, `opencv-python`, `requests`, `minio`.
-- Thêm `setup.ps1` để chạy/dừng/dọn runtime local, tự chọn port trống, lưu log vào `.runtime/logs/` và port vào `.runtime/ports.env`.
-- `setup.ps1 up` quản lý AI Worker như host service, inject `NEXT_PUBLIC_API_URL` và `NEXT_PUBLIC_AI_WORKER_URL` cho frontend; `run-ai-worker.ps1` đã được thay thế.
+- Thêm `setup.ps1` để chạy/dừng/dọn runtime local, tự chọn port trống, cấp port infra từ dải `7001+`, lưu log vào `.runtime/logs/` và port vào `.runtime/ports.env`.
+- `setup.ps1 up` tự kiểm tra/tạo runtime cần thiết: Java 21 project-local nếu máy chưa có, `frontend/node_modules` qua `npm install`, AI Worker `venv` + `requirements.txt`, và `frontend/.env.local` với `NEXT_PUBLIC_API_URL` + `NEXT_PUBLIC_AI_WORKER_URL`.
+- `setup.ps1 down` chỉ dừng AI Worker/frontend/backend/infra và xóa `.runtime/`; giữ `venv`, `node_modules`, `.next`, `backend/target`, local JDK để lần sau khởi động nhanh.
+- `setup.ps1 clean` làm toàn bộ việc của `down`, dọn Docker container/volume/orphan thuộc compose project, không xóa shared images, rồi xóa thêm `ai-worker/venv/`, `frontend/node_modules/`, `frontend/.next/`, `backend/target/`, local JDK `jdk-21.0.3+9/`.
+- `setup.ps1 up` quản lý AI Worker như host service; `run-ai-worker.ps1` đã được thay thế.
 - Cập nhật `/cameras`: nhập RTSP URL, Start/Stop Detect, MJPEG preview lớn hơn, delete camera xử lý đúng response `204 No Content`.
 - Fix hydration/token issues bằng cách đọc cookie auth sau mount trong `useEffect`.
 - Tạo/cập nhật `docs/explanations/ai-worker-explanation.md`.
@@ -366,9 +372,10 @@ npm run dev   # http://localhost:3000
 - [x] Chuẩn bị script load YOLO `.pt` bằng Ultralytics.
 - [x] Nhận input video/image bằng `--source`.
 - [x] Hỗ trợ `--conf`, `--show`, `--save`.
-- [x] Tải model `.pt` vào `video-detect/models/` hoặc truyền `--model`.
+- [x] Tải model `.pt` vào `video-detect/models/` hoặc truyền `--model`; mặc định dùng `wildfire-smoke-fire.pt`, fallback `best.pt`.
 - [x] Chạy thử với video local và kiểm tra bounding box.
 - [x] Tách CLI local sang `video-detect/`, không backend/MinIO/auth/alert.
+- [x] Thêm `video-detect/run-video-detect.ps1` để tự tạo venv, cài deps và forward args vào CLI.
 
 #### 6b. Tích hợp backend sau khi model chạy ổn *(Đang làm)*
 - [x] Upload snapshot lên MinIO.

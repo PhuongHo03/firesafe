@@ -1,116 +1,122 @@
-# Rule: Cập nhật Explanation File Khi Sửa Code
+# Rule: Keep Explanation Docs Current
 
-## Nguyên tắc
+`docs/explanations/*-explanation.md` files describe how each project area works. Keep them aligned with source changes so future Claude Code sessions can understand the repo quickly.
 
-Mỗi khi thực hiện thay đổi code trong bất kỳ service nào của project, **phải** cập nhật file explanation tương ứng trong `docs/explanations/` để đảm bảo tài liệu luôn phản ánh đúng trạng thái thực tế của codebase.
+## Documentation mapping
 
----
-
-## Mapping Service → Explanation File
-
-| Service / Thư mục thay đổi | File explanation cần cập nhật |
+| Changed area | Explanation file |
 |---|---|
 | `backend/` | `docs/explanations/backend-explanation.md` |
 | `frontend/` | `docs/explanations/frontend-explanation.md` |
 | `ai-worker/` | `docs/explanations/ai-worker-explanation.md` |
-| `docker-compose*.yml` | `docs/explanations/infrastructure-explanation.md` |
+| `video-detect/` | `docs/explanations/video-detect-explanation.md` |
+| `mock-worker/` | `docs/explanations/mock-worker-explanation.md` |
+| `docker-compose*.yml`, `setup.ps1` | `docs/explanations/infrastructure-explanation.md` |
+| New major service/tool | Create matching `docs/explanations/<area>-explanation.md` |
 
-> Nếu chưa có file explanation cho service vừa tạo mới, **phải tạo file đó** theo cùng format với `backend-explanation.md`.
+If a change touches multiple areas, update each matching explanation file.
 
----
+## When to update
 
-## Những thay đổi nào cần cập nhật explanation?
+Update explanation docs when a change affects future understanding of structure, behavior, operations, or integration.
 
-### ✅ BẮT BUỘC cập nhật khi:
+Required updates:
 
-- **Thêm file mới** → cập nhật cây cấu trúc + thêm mục giải thích cho file mới
-- **Xóa file** → xóa khỏi cây cấu trúc + xóa mục giải thích tương ứng
-- **Đổi tên file hoặc folder** → cập nhật mọi chỗ đề cập đến tên cũ
-- **Thêm endpoint mới** vào controller → cập nhật bảng endpoint trong section controller
-- **Thay đổi logic nghiệp vụ quan trọng** trong service → cập nhật phần mô tả luồng xử lý
-- **Thêm dependency mới** vào `pom.xml` / `package.json` → cập nhật bảng dependencies
-- **Thêm bảng DB mới** (migration) → cập nhật phần `db/migration/`
-- **Thay đổi cấu hình** `application.yml` (thêm section mới) → cập nhật bảng config
+- Add/remove/rename important files or folders.
+- Add/remove/change public APIs, routes, endpoints, CLI args, env vars, ports, or generated files.
+- Change runtime behavior: startup, shutdown, cleanup, logs, process ownership, Docker resources, safety scope.
+- Change business logic or cross-service flow.
+- Add/remove dependencies in `pom.xml`, `package.json`, or `requirements.txt`.
+- Change DB migrations, seed data, tables, indexes, or default accounts.
+- Change auth/security, secrets handling, or credentials policy.
+- Change AI model selection, model path fallback, detection flow, storage upload, alert flow, or worker threading.
+- Add runner scripts or change how local tools are executed.
 
-### ⚠️ Không cần cập nhật khi:
+Usually skip updates for:
 
-- Sửa bug nhỏ không thay đổi interface/behavior bên ngoài
-- Refactor nội bộ (không đổi tên class, method signature, endpoint)
-- Thêm log statement, comment
-- Sửa lỗi typo trong code
+- Tiny bug fixes that do not change external behavior or future-session context.
+- Pure formatting changes.
+- Internal refactors with no name/signature/behavior/config/runtime change.
+- Log text changes that do not alter operations.
+- Test-only changes unless they document important behavior or setup.
 
----
+When unsure, prefer a short doc update over stale docs.
 
-## Cách cập nhật
+## What to update inside an explanation file
 
-### 1. Cập nhật cây cấu trúc
+### 1. Structure tree
 
-Nếu thêm/xóa/đổi tên file, tìm đúng vị trí trong cây ASCII và chỉnh sửa. Ví dụ thêm `UserController.java`:
+If files/folders changed, update the ASCII tree.
 
+Keep entries short:
+
+```text
+├── service.py          ← HTTP API: health/start/stop/status/stream
+└── src/config.py       ← Runtime/model config
 ```
-# Trước
-│   ├── controller/
-│   │   ├── AuthController.java
-│   │   └── AlertController.java
 
-# Sau
-│   ├── controller/
-│   │   ├── AuthController.java
-│   │   ├── AlertController.java
-│   │   └── UserController.java              ← POST/GET /api/v1/users
-```
+Do not list generated/local artifacts unless users must know they are created/ignored.
 
-### 2. Cập nhật phần giải thích tương ứng
+### 2. Behavior sections
 
-Tìm đến section của folder/file đó và cập nhật nội dung. Giữ đúng format:
-- Dùng heading `####` cho từng file con
-- Dùng bảng markdown cho danh sách endpoint, dependency, config
-- Dùng code block có ngôn ngữ cho ví dụ code
+Update the section that explains the changed behavior:
 
-### 3. Cập nhật dòng footer — **BẮT BUỘC, KHÔNG ĐƯỢC BỎ QUA**
+- Request/response flow.
+- Runtime lifecycle.
+- Worker/thread flow.
+- Storage/DB/queue flow.
+- Cleanup behavior.
+- Env/config behavior.
+- CLI usage.
 
-> ⚠️ **Đây là bước hay bị quên nhất. Sau khi cập nhật nội dung, LUÔN kiểm tra và cập nhật dòng cuối file.**
+Prefer concise source-derived descriptions. Do not invent future features.
 
-Dòng cuối mỗi file explanation có dạng:
+### 3. Tables and examples
+
+Update tables/code blocks when the source changes:
+
+- Endpoint tables.
+- CLI arguments.
+- Env var tables.
+- Dependency tables.
+- Port/resource tables.
+- Example commands.
+- Payload examples.
+
+Examples must match current source defaults.
+
+### 4. Footer
+
+Each explanation file ends with a phase/status footer, for example:
+
 ```markdown
-*Tài liệu phản ánh trạng thái backend tại **Giai đoạn X**. ...*
+*Tài liệu phản ánh trạng thái backend tại **Giai đoạn 6**. ...*
 ```
 
-**Khi nào cập nhật:** Sau khi hoàn thành một giai đoạn mới (dù file đó có thay đổi nội dung hay không).
-- File có thay đổi trực tiếp → cập nhật số giai đoạn + mô tả ngắn những gì mới
-- File **không** có thay đổi nhưng project đã qua giai đoạn mới → vẫn cập nhật số giai đoạn
+Update the footer when:
 
-Ví dụ:
-```markdown
-# Trước (sau Giai đoạn 2)
-*Tài liệu phản ánh trạng thái backend tại **Giai đoạn 2**. Các phần TODO Phase 3...*
+- The file content changes materially.
+- The project phase changes.
+- The footer describes outdated behavior.
 
-# Sau (sau Giai đoạn 3)
-*Tài liệu phản ánh trạng thái backend tại **Giai đoạn 3**. Bao gồm: MinioService, TelegramNotificationService...*
-```
+Keep the existing language/style of the doc unless the user asks to translate it.
 
----
+## Order of operations
 
-## Thứ tự thực hiện
+For code/config behavior changes:
 
-Khi hoàn thành một task code, làm **đúng thứ tự** sau — không bỏ bước nào:
+1. Implement the source change.
+2. Verify the source change with the smallest relevant check.
+3. Update matching explanation file(s).
+4. Check the updated section/footer.
+5. Update `docs/plannings/planning.md` if structure, phase, runtime behavior, ports, services, or explanation files changed.
+6. Final response must mention docs/planning updates, or explicitly say they were not needed.
 
-1. Viết/sửa code
-2. Xác nhận code chạy đúng
-3. Cập nhật cây cấu trúc + phần giải thích trong explanation file
-4. **Cập nhật dòng footer** — ghi đúng giai đoạn hiện tại (bước này hay bị quên)
-5. Cập nhật `planning.md` theo rule `update-planning.md`
+## Consistency rules
 
----
-
-## Ví dụ thực tế
-
-**Task:** Thêm `UserController.java` và `UserService.java` vào backend
-
-**Các cập nhật cần thiết trong `backend-explanation.md`:**
-
-1. Cây cấu trúc → thêm 2 dòng vào `controller/` và `service/`
-2. Section `controller/` → thêm bảng endpoint của `UserController`
-3. Section `service/` → thêm mô tả `UserService`
-4. Section `Tổng kết` → cập nhật nếu layer thay đổi đáng kể
-5. **Dòng footer** → đổi thành giai đoạn hiện tại, ví dụ `Giai đoạn 4`
+- Source of truth is current code/config, not older docs.
+- Do not document behavior that is not implemented.
+- Do not leave old filenames, old ports, old service names, or old cleanup behavior in docs.
+- Do not create new documentation files unless a new major area needs one or the user asks.
+- Keep docs explanatory, not a chronological changelog.
+- Preserve project language/style in existing docs unless asked otherwise.

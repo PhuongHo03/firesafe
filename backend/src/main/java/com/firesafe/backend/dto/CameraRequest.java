@@ -1,10 +1,7 @@
 package com.firesafe.backend.dto;
 
-import com.firesafe.backend.entity.Camera;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
-
-import java.time.LocalDateTime;
 
 @Data
 public class CameraRequest {

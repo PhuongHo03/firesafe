@@ -18,26 +18,25 @@ Chạy từ project root:
 
 | Command | Hành động |
 |---|---|
-| `up` | Tạo `.runtime/`, start Docker infra, backend, frontend, AI Worker |
-| `down` | Dừng AI Worker/backend/frontend bằng PID file, `docker compose down`, xóa `.runtime/` |
-| `clean` | Dừng runtime, `docker compose down -v --rmi all --remove-orphans`, xóa `.runtime/` |
+| `up` | Tạo `.runtime/`, kiểm tra dependency, tự chuẩn bị JDK 21/frontend deps/AI Worker venv khi cần, ghi `frontend/.env.local`, start Docker infra, backend, frontend, AI Worker |
+| `down` | Dừng AI Worker/frontend/backend bằng PID file có metadata kiểm chứng, `docker compose down`, xóa `.runtime/`; giữ deps/build cache |
+| `clean` | Làm toàn bộ việc của `down`, `docker compose down -v --remove-orphans`, xóa thêm generated artifacts local |
 
-Runtime metadata/logs được ghi vào:
+Runtime metadata/logs được ghi vào (`docker.log` đợi infra running/healthy rồi mới ghi Docker Compose status và logs):
 
 ```text
 .runtime/ports.env
 .runtime/logs/docker.log
 .runtime/logs/backend.log
-.runtime/logs/backend.err.log
 .runtime/logs/frontend.log
-.runtime/logs/frontend.err.log
 .runtime/logs/ai-worker.log
-.runtime/logs/ai-worker.err.log
 ```
 
-`ports.env` chứa port host của backend, frontend, AI Worker, MariaDB, Redis, RabbitMQ, MinIO, Adminer, RedisInsight. `up` ưu tiên port mặc định; nếu port bận trước khi start, script tự chọn port trống tiếp theo và truyền vào Docker Compose/backend/frontend/AI Worker.
+`ports.env` chứa port host của backend, frontend, AI Worker, MariaDB, Redis, RabbitMQ, MinIO, Adminer, RedisInsight. `up` ưu tiên port mặc định cho backend/frontend/AI Worker. Các port infra được cấp từ dải `7001+` theo thứ tự Adminer, MinIO Console, RedisInsight, RabbitMQ UI, MariaDB, MinIO API, Redis, RabbitMQ; nếu port bận, script tự tăng dần tới port trống tiếp theo và truyền vào Docker Compose/backend/frontend/AI Worker.
 
-`down` xóa toàn bộ runtime artifacts gồm ports và logs. `clean` là chế độ aggressive: xóa container, image, volume thuộc compose project này rồi xóa `.runtime/`.
+Trước khi start, `up` kiểm tra Docker, Node/npm và Python đã có trên máy. Nếu thiếu các công cụ hệ thống này, script dừng và in hướng dẫn cài đặt. Với Java, script ưu tiên `jdk-21.0.3+9` trong project; nếu chưa có Java 21 trong PATH thì tự tải JDK 21 về project. Nếu `frontend/node_modules` chưa tồn tại, script tự chạy `npm install` trong `frontend/`. AI Worker tự tạo `ai-worker/venv` và cài `requirements.txt` khi start. Sau khi chọn port, script ghi `frontend/.env.local` với `NEXT_PUBLIC_API_URL` và `NEXT_PUBLIC_AI_WORKER_URL` khớp port backend/AI Worker hiện tại.
+
+`down` xóa runtime artifacts gồm ports/logs/PID trong `.runtime/`, nhưng giữ `ai-worker/venv/`, `frontend/node_modules/`, `frontend/.next/`, `backend/target/` và local JDK để lần sau khởi động nhanh. Host-process chỉ bị dừng khi PID file khớp metadata process do chính `setup.ps1` start trong đúng thư mục service; script không kill theo port để tránh dừng nhầm process của dự án khác. `clean` là chế độ aggressive trong phạm vi project: xóa container, volume và orphan thuộc compose project này, không xóa Docker image dùng chung, xóa `.runtime/`, rồi xóa thêm `ai-worker/venv/`, `frontend/node_modules/`, `frontend/.next/`, `backend/target/`, `jdk-21.0.3+9/`.
 
 ### Docker infra thủ công
 
@@ -71,6 +70,8 @@ cd backend
 ---
 
 ## 📦 Các Service
+
+Các port trong bảng dưới là default khi chạy Docker Compose thủ công. Khi chạy bằng `setup.ps1 up`, port host được lấy từ `.runtime/ports.env`.
 
 ### 1. `mariadb` — Database chính
 
@@ -144,8 +145,8 @@ spring.data.redis.port: 6379
 | Username | `guest` |
 | Password | `guest` |
 
-**Vai trò:** Nhận message từ Spring Boot (`AlertService`) và chuyển đến `NotificationWorker` để gửi Zalo ZNS / Telegram. Việc dùng queue đảm bảo:
-- Nếu Zalo API down, message không mất — vẫn còn trong queue
+**Vai trò:** Nhận message từ Spring Boot (`AlertService`) và chuyển đến `NotificationWorker` để gửi Telegram khi notification được bật. Việc dùng queue đảm bảo:
+- Nếu Telegram API tạm lỗi/rate limit, worker có thể retry mà không chặn request alert
 - `AlertService` trả response ngay cho AI Worker, không phải chờ notification gửi xong
 
 **Management UI:** Truy cập `http://localhost:15672` (`guest/guest`) để xem topology Exchange/Queue, số message đang chờ, consumer status.
@@ -258,29 +259,31 @@ Data tồn tại ngay cả khi container bị xóa, chỉ mất khi chạy `dock
 
 ---
 
-## 🔍 Tại sao không có Spring Boot trong file này?
+## 🔍 Tại sao không có Backend/Frontend/AI Worker trong file này?
 
-File này cố tình **không** bao gồm Spring Boot vì:
+File này cố tình **chỉ** bao gồm infrastructure Docker. Backend, Frontend và AI Worker chạy trực tiếp trên host qua `setup.ps1` vì:
 
-1. **Hot-reload:** Khi dev, bạn liên tục sửa code. Chạy Spring Boot trên máy host cho phép IDE tự reload, còn trong Docker phải rebuild image mỗi lần.
-2. **Debug:** Attach debugger từ IntelliJ/VSCode vào process trên host dễ hơn nhiều so với remote debug vào container.
-3. **Runtime linh hoạt:** `setup.ps1` quản lý backend/frontend bằng process host và PID files, còn Docker Compose chỉ giữ phần infra.
+1. **Hot-reload:** Khi dev, bạn liên tục sửa code. Chạy Spring Boot/Next.js trên host cho phép reload nhanh, còn trong Docker phải rebuild image nhiều hơn.
+2. **Debug:** Attach debugger/log vào process host dễ hơn remote debug trong container.
+3. **Runtime linh hoạt:** `setup.ps1` quản lý backend/frontend/AI Worker bằng PID files, port động và log riêng; Docker Compose chỉ giữ DB/cache/queue/storage/dev UI.
 
-File `docker-compose.yml` (production, không có hậu tố `.dev`) sẽ bao gồm tất cả service kể cả Spring Boot, Next.js, Nginx.
+File `docker-compose.yml` production sau này sẽ bao gồm toàn bộ service: Nginx, Frontend, Backend, AI Worker và infrastructure.
 
 ---
 
 ## 📊 Tóm tắt nhanh
 
-| Service | Port | UI | Mục đích |
+| Service | Port mặc định | UI mặc định | Mục đích |
 |---|---|---|---|
-| MariaDB | `3306` | ✅ http://localhost:8081 (Adminer) | Database chính |
-| Redis | `6379` | ✅ http://localhost:5540 (RedisInsight) | Debounce alert (cache TTL) |
-| RabbitMQ | `5672` | ✅ http://localhost:15672 (`guest/guest`) | Message queue async notification |
-| MinIO | `9000` | ✅ http://localhost:9001 (`minioadmin/minioadmin`) | Lưu ảnh snapshot |
-| Adminer | `8081` | ✅ http://localhost:8081 | Web UI quản lý MariaDB |
-| RedisInsight | `5540` | ✅ http://localhost:5540 | Web UI quản lý Redis |
+| MariaDB | `3306` / runtime `MARIADB_PORT` | Adminer | Database chính |
+| Redis | `6379` / runtime `REDIS_PORT` | RedisInsight | Debounce alert (cache TTL) |
+| RabbitMQ | `5672` / runtime `RABBITMQ_PORT` | `RABBITMQ_UI_PORT` (`guest/guest`) | Message queue async notification |
+| MinIO | `9000` / runtime `MINIO_API_PORT` | `MINIO_CONSOLE_PORT` (`minioadmin/minioadmin`) | Lưu ảnh snapshot |
+| Adminer | `8081` / runtime `ADMINER_PORT` | `http://localhost:<ADMINER_PORT>` | Web UI quản lý MariaDB |
+| RedisInsight | `5540` / runtime `REDISINSIGHT_PORT` | `http://localhost:<REDISINSIGHT_PORT>` | Web UI quản lý Redis |
+
+Port thực tế luôn ưu tiên xem trong `.runtime/ports.env` sau khi chạy `setup.ps1 up`.
 
 ---
 
-*Tài liệu phản ánh trạng thái `docker-compose.dev.yml` và `setup.ps1` tại **Giai đoạn 6**. Infrastructure dev chạy bằng Docker Compose; backend/frontend chạy trên host qua runtime manager. File `docker-compose.yml` production sẽ bổ sung ở Giai đoạn 8.*
+*Tài liệu phản ánh trạng thái `docker-compose.dev.yml` và `setup.ps1` tại **Giai đoạn 6**. Infrastructure dev chạy bằng Docker Compose; backend/frontend/AI Worker chạy trên host qua runtime manager. File `docker-compose.yml` production sẽ bổ sung ở Giai đoạn 8.*

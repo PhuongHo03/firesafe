@@ -8,43 +8,59 @@
 
 ```
 mock-worker/
-├── mock_worker.py    ← Script chính, chạy toàn bộ E2E test suite
-└── requirements.txt  ← Dependencies: requests, minio, Pillow
+├── mock_worker.py         ← Script chính, chạy toàn bộ E2E test suite
+├── requirements.txt       ← Dependencies: requests, minio, Pillow
+└── run-mock-worker.ps1    ← Runner Windows scoped trong mock-worker/, tự tạo venv và cài deps
 ```
 
 ---
 
 ## 🚀 Cách sử dụng
 
-**Cách nhanh nhất (Tự động dùng venv trong `mock-worker/`):**
+**Cách nhanh nhất (Tự động dùng venv trong `mock-worker/`, chạy toàn bộ suite):**
 Tại thư mục gốc của project, chạy:
 ```powershell
-.\run-mock-worker.ps1
+.\mock-worker\run-mock-worker.ps1
 ```
 
 **Hoặc chạy thủ công từng bước:**
 ```bash
 cd mock-worker
 
-# Tạo và kích hoạt venv (nếu chạy lần đầu)
+# Tạo venv nếu chạy lần đầu
 python -m venv venv
-.\venv\Scripts\Activate.ps1
 
-# Cài dependencies
-pip install -r requirements.txt
+# Cài dependencies bằng Python trong venv
+.\venv\Scripts\python.exe -m pip install -r requirements.txt
 
 # Chạy toàn bộ E2E test suite
-python mock_worker.py
+.\venv\Scripts\python.exe mock_worker.py
 
 # Chỉ chạy một test cụ thể
-python mock_worker.py --test minio      # Test MinIO upload
-python mock_worker.py --test pipeline   # Test alert pipeline (upload → POST → verify DB)
-python mock_worker.py --test debounce   # Test Redis debounce (10 alerts liên tiếp)
+.\venv\Scripts\python.exe mock_worker.py --test minio      # Test MinIO upload
+.\venv\Scripts\python.exe mock_worker.py --test pipeline   # Test alert pipeline (upload → POST → verify DB)
+.\venv\Scripts\python.exe mock_worker.py --test debounce   # Test Redis debounce (10 alerts liên tiếp)
 ```
 
 **Yêu cầu trước khi chạy:**
-1. Infrastructure đang chạy: `docker compose -f docker-compose.dev.yml up -d`
-2. Backend đang chạy: `cd backend && .\mvnw.cmd spring-boot:run`
+1. Runtime chính đang chạy: `setup.ps1 up`
+2. Backend có ít nhất 1 camera thật/preset. Mock-worker sẽ lấy camera đầu tiên từ `GET /api/v1/cameras`, không tự seed camera.
+3. Nếu runtime đang dùng port động, truyền env tương ứng trước khi chạy thủ công: `BACKEND_URL`, `MINIO_URL`, `MINIO_PUBLIC_URL`.
+
+---
+
+## ⚙️ Env vars
+
+| Biến | Default | Mục đích |
+|---|---|---|
+| `BACKEND_URL` | `http://localhost:8080` | Backend API base URL |
+| `MINIO_URL` | `localhost:9000` | MinIO API host:port cho SDK |
+| `MINIO_PUBLIC_URL` | `http://<MINIO_URL>` | URL lưu vào `imageUrl` |
+| `MINIO_ACCESS_KEY` | `minioadmin` | MinIO access key |
+| `MINIO_SECRET_KEY` | `minioadmin` | MinIO secret key |
+| `MINIO_BUCKET` | `snapshots` | Bucket ảnh mock |
+| `FIRESAFE_USERNAME` | `admin` | User login backend |
+| `FIRESAFE_PASSWORD` | `admin123` | Password login backend |
 
 ---
 
@@ -55,37 +71,38 @@ python mock_worker.py --test debounce   # Test Redis debounce (10 alerts liên t
 - Assert: HTTP 200, nhận JWT token
 - Token được dùng cho tất cả API calls phía sau
 
-### Test 2 — MinIO Upload
-- Tạo ảnh PNG giả bằng Pillow (640×480, màu đỏ, có text timestamp)
-- Upload lên bucket `snapshots` với path `cam-001/{timestamp}-fire.png`
-- Assert: Upload thành công, URL trả về có dạng `http://localhost:9000/snapshots/...`
+### Test 2 — Camera API
+- `GET /api/v1/cameras` với JWT token
+- Lấy camera đầu tiên làm camera test
+- Nếu chưa có camera, script fail rõ ràng và yêu cầu tạo/preset camera trước
 
-### Test 3 — Alert Pipeline
+### Test 3 — MinIO Upload
+- Tạo ảnh PNG giả bằng Pillow (640×480, màu đỏ, có text timestamp)
+- Upload lên bucket `snapshots` với object key `cam-{id}/{timestamp}-fire.png`
+- Assert: Upload thành công, URL trả về có dạng `http://localhost:<MINIO_API_PORT>/snapshots/...`
+
+### Test 4 — Alert Pipeline
 ```
 mock_worker
     → POST /api/v1/alerts (với image_url từ MinIO)
     → Backend lưu DB (MariaDB)
-    → Backend enqueue RabbitMQ
+    → Backend enqueue RabbitMQ nếu debounce key chưa tồn tại
     → NotificationWorker consume → Telegram (nếu enabled)
     → GET /api/v1/alerts/{id} → verify alert tồn tại trong DB
 ```
 
-### Test 4 — Redis Debounce
+### Test 5 — Redis Debounce
 - Gửi 10 alerts liên tiếp từ cùng camera trong ~5 giây
 - **Kết quả mong đợi:** Backend chỉ gửi 1 notification (alert đầu tiên)
 - 9 alerts còn lại: vẫn lưu DB, nhưng không enqueue RabbitMQ
-- Kiểm tra: console backend chỉ thấy 1 log `🔥 FIRE ALERT!`
-
-### Test 5 — Camera API
-- `GET /api/v1/cameras` với JWT token
-- Assert: HTTP 200, có ít nhất 1 camera trong kết quả
+- Kiểm tra backend log để xác nhận chỉ enqueue/gửi 1 notification trong cooldown window
 
 ---
 
 ## 📊 Output mẫu khi chạy thành công
 
-```
-🔥 FireSafe Mock AI Worker — E2E Test Suite
+```text
+[FIRESAFE] Mock AI Worker - E2E Test Suite
 Backend : http://localhost:8080
 MinIO   : http://localhost:9000
 
@@ -95,27 +112,31 @@ MinIO   : http://localhost:9000
 [10:30:01] ✅ Login OK — token: eyJhbGciOiJIUzI1NiIsInR5c...
 
 ============================================================
-  TEST 2 — MinIO Upload
+  TEST 2 — Camera API
+============================================================
+[10:30:01] ✅ Camera selected — ID: 1, name: Camera RTSP Preset
+
+============================================================
+  TEST 3 — MinIO Upload
 ============================================================
 [10:30:01] ✅ Upload OK — http://localhost:9000/snapshots/cam-001/...
 
 ============================================================
-  TEST 3 — Alert Pipeline (POST → DB → RabbitMQ → Notification)
+  TEST 4 — Alert Pipeline
 ============================================================
 [10:30:02] ✅ Alert created — ID: 1, status: NEW
-[10:30:03] ✅ Alert in DB — camera: Camera Test 01, label: fire, confidence: 0.91
 
 ============================================================
-  TEST 4 — Redis Debounce (10 alerts trong 10 giây)
+  TEST 4 — Verify Alert in DB
+============================================================
+[10:30:03] ✅ Alert in DB — camera: Camera RTSP Preset, label: fire, confidence: 0.91
+
+============================================================
+  TEST 5 — Redis Debounce
 ============================================================
 [10:30:03] Gửi 10 alerts liên tiếp từ cùng 1 camera...
 ...
-[10:30:08] ✅ Debounce OK nếu Telegram/log chỉ nhận được 1 notification
-
-============================================================
-  TEST 5 — Camera API
-============================================================
-[10:30:08] ✅ Camera list OK — 1 camera(s) found
+[10:30:08] ✅ Debounce OK nếu backend chỉ enqueue/gửi 1 notification trong cooldown window
 
 ============================================================
   ✅ TẤT CẢ TESTS PASSED
@@ -128,12 +149,14 @@ MinIO   : http://localhost:9000
 
 | UI | URL | Credentials | Kiểm tra gì |
 |---|---|---|---|
-| Swagger UI | http://localhost:8080/swagger-ui.html | JWT token | Test thêm API thủ công |
-| Adminer | http://localhost:8081 | `firesafe`/`firesafe` | Bảng `alerts` có dữ liệu |
-| RabbitMQ | http://localhost:15672 | `guest`/`guest` | Queue depth = 0 (đã consumed) |
-| MinIO Console | http://localhost:9001 | `minioadmin`/`minioadmin` | Bucket `snapshots` có ảnh |
-| RedisInsight | http://localhost:5540 | Host: `firesafe-redis` | Key `alert:debounce:1` có TTL |
+| Swagger UI | `http://localhost:<BACKEND_PORT>/swagger-ui.html` | JWT token | Test thêm API thủ công |
+| Adminer | `http://localhost:<ADMINER_PORT>` | `firesafe`/`firesafe` | Bảng `alerts` có dữ liệu |
+| RabbitMQ | `http://localhost:<RABBITMQ_UI_PORT>` | `guest`/`guest` | Queue depth = 0 (đã consumed) |
+| MinIO Console | `http://localhost:<MINIO_CONSOLE_PORT>` | `minioadmin`/`minioadmin` | Bucket `snapshots` có ảnh |
+| RedisInsight | `http://localhost:<REDISINSIGHT_PORT>` | Host: `firesafe-redis` | Key `alert:debounce:<cameraId>` có TTL |
+
+Port thực tế xem trong `.runtime/ports.env` sau khi chạy `setup.ps1 up`.
 
 ---
 
-*Tài liệu phản ánh trạng thái mock-worker tại **Giai đoạn 6**. Script này không đổi; AI Worker thật được tách riêng trong `ai-worker/`.*
+*Tài liệu phản ánh trạng thái mock-worker tại **Giai đoạn 6**. Mock-worker là E2E tester độc lập; runtime chính không phụ thuộc vào script này, AI Worker thật nằm trong `ai-worker/`.*

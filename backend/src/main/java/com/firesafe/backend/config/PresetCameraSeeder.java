@@ -10,17 +10,17 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Component
 @RequiredArgsConstructor
-public class DemoCameraSeeder implements CommandLineRunner {
+public class PresetCameraSeeder implements CommandLineRunner {
 
     private final CameraRepository cameraRepository;
 
-    @Value("${firesafe.demo-camera.rtsp-url:}")
+    @Value("${firesafe.preset-camera.rtsp-url:}")
     private String rtspUrl;
 
-    @Value("${firesafe.demo-camera.name:Camera RTSP Demo}")
+    @Value("${firesafe.preset-camera.name:Camera RTSP Preset}")
     private String name;
 
-    @Value("${firesafe.demo-camera.location:Demo}")
+    @Value("${firesafe.preset-camera.location:Preset}")
     private String location;
 
     @Override
