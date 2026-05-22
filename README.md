@@ -29,7 +29,8 @@ FireSafe is a local-first fire and smoke monitoring system. It combines a Spring
 | Backend API | Implemented: JWT auth, cameras, alerts, Redis debounce, RabbitMQ notification jobs |
 | Frontend | Implemented: login, dashboard, alert detail, camera management |
 | Mock Worker | Implemented: backend E2E test without real camera/model |
-| AI Worker | In progress: local video and RTSP detection with YOLO `.pt` model |
+| AI Worker | In progress: RTSP preview and realtime YOLO detection with `.pt` model |
+| Video Detect | Implemented: offline YOLO video/image debug CLI |
 | Production deploy | Planned: Nginx, full Docker Compose, Prometheus, Grafana |
 
 ---
@@ -61,23 +62,13 @@ flowchart LR
 
 Run commands from the repository root.
 
-### 1. Start local runtime
+### 1. Full local runtime
 
-Windows:
+Starts Docker infra, backend, frontend, and AI Worker on Windows:
 
 ```powershell
 .\setup.ps1 up
 ```
-
-Runtime metadata is written under `.runtime/`:
-
-| File | Source |
-|---|---|
-| `.runtime/ports.env` | Local service ports selected at startup |
-| `.runtime/logs/docker.log` | Docker infrastructure status and logs |
-| `.runtime/logs/backend.log` | Spring Boot stdout/stderr |
-| `.runtime/logs/frontend.log` | Next.js stdout/stderr |
-| `.runtime/logs/ai-worker.log` | AI Worker stdout/stderr |
 
 Stop runtime and remove `.runtime/`:
 
@@ -91,21 +82,60 @@ Aggressive cleanup:
 .\setup.ps1 clean
 ```
 
-`up` picks the preferred ports first; if a port is busy before startup, it moves to the next free port and records the result in `.runtime/ports.env`.
+`up` picks preferred ports first; if a port is busy, it moves to the next free port and records the result in `.runtime/ports.env`.
 
-`down` stops verified runtime processes, stops Docker infra, and deletes `.runtime/`. `clean` also removes Compose containers, volumes, and orphans for this project, plus generated local artifacts. It does not remove shared Docker images.
+Runtime metadata is written under `.runtime/`:
 
-### 2. Manual backend/frontend start
+| File | Source |
+|---|---|
+| `.runtime/ports.env` | Local service ports selected at startup |
+| `.runtime/logs/docker.log` | Docker infrastructure status and logs |
+| `.runtime/logs/backend.log` | Spring Boot stdout/stderr |
+| `.runtime/logs/frontend.log` | Next.js stdout/stderr |
+| `.runtime/logs/ai-worker.log` | AI Worker stdout/stderr |
 
-Linux/macOS or manual dev mode:
+### 2. Backend E2E mock worker
 
-```bash
-docker compose -f docker-compose.dev.yml up -d
-cd backend
-./mvnw spring-boot:run
+Runs the synthetic backend pipeline test:
+
+```powershell
+.\mock-worker\run-mock-worker.ps1
 ```
 
-Backend runs at:
+Requires the main runtime/backend + MinIO to be running.
+
+### 3. Offline YOLO video/image detect
+
+Runs local model debug against a file:
+
+```powershell
+.\video-detect\run-video-detect.ps1 --source path\to\video.mp4 --save
+```
+
+Requires a YOLO model under `video-detect/models/` or an explicit `--model` path.
+
+---
+
+## Manual Start
+
+Use this when not using `setup.ps1 up`.
+
+### 1. Infrastructure / Docker
+
+```powershell
+docker compose -f docker-compose.dev.yml up -d
+```
+
+This starts MariaDB, Redis, RabbitMQ, MinIO, Adminer, and RedisInsight with manual default ports.
+
+### 2. Backend
+
+```powershell
+cd backend
+.\mvnw.cmd spring-boot:run
+```
+
+Backend default URLs:
 
 | Service | URL |
 |---|---|
@@ -119,47 +149,40 @@ Default dev account:
 |---|---|
 | `admin` | `admin123` |
 
-### 3. Start frontend
+To prefill one preset camera from env, edit `backend/.env.local` before starting backend:
 
-Windows:
+```env
+FIRESAFE_PRESET_CAMERA_RTSP_URL=rtsp://user:password@camera-host:554/stream1
+FIRESAFE_PRESET_CAMERA_NAME=Camera RTSP Preset
+FIRESAFE_PRESET_CAMERA_LOCATION=Preset
+```
+
+If the RTSP URL is non-empty, backend seeds that camera into DB on startup.
+
+### 3. Frontend
+
+Create/update `frontend/.env.local`:
+
+```env
+NEXT_PUBLIC_API_URL=http://localhost:8080
+NEXT_PUBLIC_AI_WORKER_URL=http://localhost:8090
+```
+
+Then start Next.js:
 
 ```powershell
 cd frontend
+npm install
 npm run dev
 ```
 
-Linux/macOS:
-
-```bash
-cd frontend
-npm run dev
-```
-
-Frontend runs at:
+Frontend default URL:
 
 ```text
 http://localhost:3000
 ```
 
-### 4. Run backend E2E mock worker
-
-Windows:
-
-```powershell
-.\mock-worker\run-mock-worker.ps1
-```
-
-Linux/macOS:
-
-```bash
-cd mock-worker
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-python mock_worker.py
-```
-
-### 5. Run AI RTSP preview + detection
+### 4. AI Worker
 
 Place a YOLO model at one of:
 
@@ -168,35 +191,40 @@ ai-worker/models/wildfire-smoke-fire.pt
 ai-worker/models/best.pt
 ```
 
-Windows local runtime starts the AI Worker service automatically:
+Then start the service:
 
 ```powershell
-.\setup.ps1 up
+cd ai-worker
+python -m venv venv
+.\venv\Scripts\python.exe -m pip install -r requirements.txt
+.\venv\Scripts\python.exe service.py --port 8090 --backend-url http://localhost:8080 --minio-url localhost:9000
 ```
 
-Then open `/cameras`, add an RTSP URL, and click **Start Detect**. The AI Worker service reads RTSP continuously, serves MJPEG preview to the UI, and posts alerts to backend when YOLO detects fire/smoke.
+Open `/cameras`, add an RTSP URL, and click **Start Detect**. The AI Worker reads RTSP continuously, serves MJPEG preview to the UI, and posts alerts to backend when YOLO detects fire/smoke.
 
-To prefill one preset camera from env, edit:
+### 5. Mock Worker
 
-```text
-backend/.env.local
+Run after infrastructure and backend are available:
+
+```powershell
+cd mock-worker
+python -m venv venv
+.\venv\Scripts\python.exe -m pip install -r requirements.txt
+.\venv\Scripts\python.exe mock_worker.py
 ```
 
-Set:
+### 6. Video Detect
 
-```env
-FIRESAFE_PRESET_CAMERA_RTSP_URL=rtsp://user:password@192.168.1.50:554/stream1
-FIRESAFE_PRESET_CAMERA_NAME=Camera RTSP Preset
-FIRESAFE_PRESET_CAMERA_LOCATION=Preset
+Run independently when you want to test a YOLO model against a local video/image:
+
+```powershell
+cd video-detect
+python -m venv venv
+.\venv\Scripts\python.exe -m pip install -r requirements.txt
+.\venv\Scripts\python.exe detect_video.py --source path\to\video.mp4 --save
 ```
 
-After `setup.ps1 up`, backend seeds that camera into DB if the RTSP URL is non-empty.
-
-AI Worker logs are written to:
-
-```text
-.runtime/logs/ai-worker.log
-```
+Default model order: `video-detect/models/wildfire-smoke-fire.pt`, then `video-detect/models/best.pt`.
 
 ---
 
@@ -229,9 +257,10 @@ AI Worker logs are written to:
 |---:|---|---|
 | 1 | `/cameras` page | Sends start/stop request to AI Worker service |
 | 2 | `ai-worker/service.py` | Manages camera workers and MJPEG endpoints |
-| 3 | `ai-worker/src/camera_worker.py` | Reads RTSP, runs YOLO, keeps preview frames |
-| 4 | `ai-worker/src/storage.py` | Uploads annotated snapshot to MinIO |
-| 5 | `ai-worker/src/backend_client.py` | Logs in and calls `POST /api/v1/alerts` |
+| 3 | `ai-worker/src/camera_worker.py` | Reads RTSP, keeps preview frames, schedules detection |
+| 4 | `ai-worker/src/detector.py` | Validates/loads YOLO model and runs frame inference |
+| 5 | `ai-worker/src/storage.py` | Uploads annotated snapshot to MinIO |
+| 6 | `ai-worker/src/backend_client.py` | Logs in and calls `POST /api/v1/alerts` |
 
 ### Video detect offline pipeline
 
@@ -333,25 +362,27 @@ Default model order: `video-detect/models/wildfire-smoke-fire.pt`, then `video-d
 
 ## Local Service Ports
 
-| Service | URL / Port | Credentials |
-|---|---|---|
-| Spring Boot API | http://localhost:8080 | — |
-| Swagger UI | http://localhost:8080/swagger-ui.html | JWT after login |
-| MariaDB | `localhost:3306` | `firesafe` / `firesafe` |
-| Adminer | http://localhost:8081 | Server `firesafe-mariadb`, user `firesafe` |
-| Redis | `localhost:6379` | none |
-| RedisInsight | http://localhost:5540 | configure host `firesafe-redis` |
-| RabbitMQ | `localhost:5672` | `guest` / `guest` |
-| RabbitMQ UI | http://localhost:15672 | `guest` / `guest` |
-| MinIO API | http://localhost:9000 | `minioadmin` / `minioadmin` |
-| MinIO Console | http://localhost:9001 | `minioadmin` / `minioadmin` |
+When using `setup.ps1 up`, always read the actual ports from `.runtime/ports.env`.
+
+| Service | Runtime URL / Port | Manual default | Credentials |
+|---|---|---|---|
+| Spring Boot API | `http://localhost:<BACKEND_PORT>` | `http://localhost:8080` | — |
+| Swagger UI | `http://localhost:<BACKEND_PORT>/swagger-ui.html` | `http://localhost:8080/swagger-ui.html` | JWT after login |
+| MariaDB | `localhost:<MARIADB_PORT>` | `localhost:3306` | `firesafe` / `firesafe` |
+| Adminer | `http://localhost:<ADMINER_PORT>` | `http://localhost:8081` | Server `firesafe-mariadb`, user `firesafe` |
+| Redis | `localhost:<REDIS_PORT>` | `localhost:6379` | none |
+| RedisInsight | `http://localhost:<REDISINSIGHT_PORT>` | `http://localhost:5540` | configure host `firesafe-redis` |
+| RabbitMQ | `localhost:<RABBITMQ_PORT>` | `localhost:5672` | `guest` / `guest` |
+| RabbitMQ UI | `http://localhost:<RABBITMQ_UI_PORT>` | `http://localhost:15672` | `guest` / `guest` |
+| MinIO API | `http://localhost:<MINIO_API_PORT>` | `http://localhost:9000` | `minioadmin` / `minioadmin` |
+| MinIO Console | `http://localhost:<MINIO_CONSOLE_PORT>` | `http://localhost:9001` | `minioadmin` / `minioadmin` |
 
 ---
 
 ## Notes On Accuracy
 
-- The backend, frontend, mock worker, local infrastructure, and AI local-video detection MVP are present in this repository.
-- AI Worker RTSP preview and YOLO detection are implemented for local development; metrics and ONNX/TensorRT export are planned next steps.
+- The backend, frontend, mock worker, local infrastructure, AI Worker RTSP service, and offline Video Detect CLI are present in this repository.
+- AI Worker RTSP preview and YOLO detection are implemented for local development; Video Detect covers offline video/image model debugging; metrics and ONNX/TensorRT export are planned next steps.
 - The current AI worker quality depends entirely on the local `.pt` model supplied in `ai-worker/models/`.
 - Default credentials and secrets are development-only.
 - Generated folders such as `backend/target/`, `frontend/.next/`, `frontend/node_modules/`, and Python `venv/` may contain machine-specific paths and should not be treated as source of truth.
