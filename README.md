@@ -64,22 +64,22 @@ Run commands from the repository root.
 
 ### 1. Full local runtime
 
-Starts Docker infra, backend, frontend, and AI Worker on Windows:
+Starts Docker infra, backend, frontend, and AI Worker.
+
+Windows:
 
 ```powershell
 .\setup.ps1 up
-```
-
-Stop runtime and remove `.runtime/`:
-
-```powershell
 .\setup.ps1 down
+.\setup.ps1 clean
 ```
 
-Aggressive cleanup:
+Linux:
 
-```powershell
-.\setup.ps1 clean
+```bash
+./setup.sh up
+./setup.sh down
+./setup.sh clean
 ```
 
 `up` picks preferred ports first; if a port is busy, it moves to the next free port and records the result in `.runtime/ports.env`.
@@ -96,20 +96,36 @@ Runtime metadata is written under `.runtime/`:
 
 ### 2. Backend E2E mock worker
 
-Runs the synthetic backend pipeline test:
+Runs the synthetic backend pipeline test.
+
+Windows runner:
 
 ```powershell
 .\mock-worker\run-mock-worker.ps1
+```
+
+Linux runner:
+
+```bash
+./mock-worker/run-mock-worker.sh
 ```
 
 Requires the main runtime/backend + MinIO to be running.
 
 ### 3. Offline YOLO video/image detect
 
-Runs local model debug against a file:
+Runs local model debug against a file.
+
+Windows runner:
 
 ```powershell
 .\video-detect\run-video-detect.ps1 --source path\to\video.mp4 --save
+```
+
+Linux runner:
+
+```bash
+./video-detect/run-video-detect.sh --source path/to/video.mp4 --save
 ```
 
 Requires a YOLO model under `video-detect/models/` or an explicit `--model` path.
@@ -118,7 +134,7 @@ Requires a YOLO model under `video-detect/models/` or an explicit `--model` path
 
 ## Manual Start
 
-Use this when not using `setup.ps1 up`.
+Use this when not using `setup.ps1 up` or `setup.sh up`.
 
 ### 1. Infrastructure / Docker
 
@@ -133,6 +149,11 @@ This starts MariaDB, Redis, RabbitMQ, MinIO, Adminer, and RedisInsight with manu
 ```powershell
 cd backend
 .\mvnw.cmd spring-boot:run
+```
+
+```bash
+cd backend
+./mvnw spring-boot:run
 ```
 
 Backend default URLs:
@@ -200,11 +221,18 @@ python -m venv venv
 .\venv\Scripts\python.exe service.py --port 8090 --backend-url http://localhost:8080 --minio-url localhost:9000
 ```
 
+```bash
+cd ai-worker
+python3 -m venv venv
+./venv/bin/python -m pip install -r requirements.txt
+./venv/bin/python service.py --port 8090 --backend-url http://localhost:8080 --minio-url localhost:9000
+```
+
 Open `/cameras`, add an RTSP URL, and click **Start Detect**. The AI Worker reads RTSP continuously, serves MJPEG preview to the UI, and posts alerts to backend when YOLO detects fire/smoke.
 
 ### 5. Mock Worker
 
-Run after infrastructure and backend are available:
+Run after infrastructure and backend are available.
 
 ```powershell
 cd mock-worker
@@ -213,15 +241,29 @@ python -m venv venv
 .\venv\Scripts\python.exe mock_worker.py
 ```
 
+```bash
+cd mock-worker
+python3 -m venv venv
+./venv/bin/python -m pip install -r requirements.txt
+./venv/bin/python mock_worker.py
+```
+
 ### 6. Video Detect
 
-Run independently when you want to test a YOLO model against a local video/image:
+Run independently when you want to test a YOLO model against a local video/image.
 
 ```powershell
 cd video-detect
 python -m venv venv
 .\venv\Scripts\python.exe -m pip install -r requirements.txt
 .\venv\Scripts\python.exe detect_video.py --source path\to\video.mp4 --save
+```
+
+```bash
+cd video-detect
+python3 -m venv venv
+./venv/bin/python -m pip install -r requirements.txt
+./venv/bin/python detect_video.py --source path/to/video.mp4 --save
 ```
 
 Default model order: `video-detect/models/wildfire-smoke-fire.pt`, then `video-detect/models/best.pt`.
@@ -262,35 +304,17 @@ Default model order: `video-detect/models/wildfire-smoke-fire.pt`, then `video-d
 | 5 | `ai-worker/src/storage.py` | Uploads annotated snapshot to MinIO |
 | 6 | `ai-worker/src/backend_client.py` | Logs in and calls `POST /api/v1/alerts` |
 
-### Video detect offline pipeline
-
-Run manually when you want to test a YOLO model against a local video/image:
-
-```powershell
-.\video-detect\run-video-detect.ps1 --source path\to\video.mp4 --save
-```
-
-Default model order: `video-detect/models/wildfire-smoke-fire.pt`, then `video-detect/models/best.pt`.
-
-| Step | Component | Action |
-|---:|---|---|
-| 1 | `video-detect/run-video-detect.ps1` | Creates venv, installs deps, forwards args |
-| 2 | `video-detect/detect_video.py` | Loads CLI config and orchestrates the run |
-| 3 | `video-detect/src/detector.py` | Runs YOLO detection on local video/image |
-| 4 | Local output | Saves annotated video/image under `video-detect/runs/detect` when `--save` is used |
-
 ---
 
 ## Deployment Profiles
 
 | Profile | Command / Entry point | Includes | Status |
 |---|---|---|---|
-| Local runtime | `./setup.ps1 up` | Docker infra, Spring Boot backend, Next.js frontend, AI Worker service | Implemented |
+| Local runtime | `./setup.ps1 up` / `./setup.sh up` | Docker infra, Spring Boot backend, Next.js frontend, AI Worker service | Implemented |
 | Local infrastructure | `docker compose -f docker-compose.dev.yml up -d` | MariaDB, Redis, RabbitMQ, MinIO, Adminer, RedisInsight | Implemented |
 | Backend dev | `backend/mvnw` | Spring Boot API on host machine | Implemented |
 | Frontend dev | `npm run dev` in `frontend/` | Next.js dashboard | Implemented |
-| Mock E2E | `./mock-worker/run-mock-worker.ps1` | Synthetic alert pipeline test | Implemented |
-| AI Worker service | `setup.ps1 up` | RTSP preview + YOLO detection + alert posting | In progress |
+| AI Worker service | runtime manager `up` | RTSP preview + YOLO detection + alert posting | In progress |
 | Production compose | `docker-compose.yml` | Nginx, frontend, API, AI worker, monitoring | Planned |
 
 ---
@@ -320,7 +344,8 @@ Default model order: `video-detect/models/wildfire-smoke-fire.pt`, then `video-d
 ├── mock-worker/                     Synthetic E2E backend tester
 │   ├── mock_worker.py
 │   ├── requirements.txt
-│   └── run-mock-worker.ps1
+│   ├── run-mock-worker.ps1
+│   └── run-mock-worker.sh
 │
 ├── ai-worker/                       YOLO RTSP preview + detection service
 │   ├── service.py
@@ -332,6 +357,7 @@ Default model order: `video-detect/models/wildfire-smoke-fire.pt`, then `video-d
 │   ├── detect_video.py
 │   ├── requirements.txt
 │   ├── run-video-detect.ps1
+│   ├── run-video-detect.sh
 │   ├── src/
 │   ├── models/
 │   └── runs/
@@ -341,7 +367,8 @@ Default model order: `video-detect/models/wildfire-smoke-fire.pt`, then `video-d
 │   └── plannings/                   Roadmap and current project context
 │
 ├── docker-compose.dev.yml           Local infrastructure stack
-└── setup.ps1                        Windows runtime manager
+├── setup.ps1                        Windows runtime manager
+└── setup.sh                         Linux runtime manager
 ```
 
 ---
@@ -362,7 +389,7 @@ Default model order: `video-detect/models/wildfire-smoke-fire.pt`, then `video-d
 
 ## Local Service Ports
 
-When using `setup.ps1 up`, always read the actual ports from `.runtime/ports.env`.
+When using `setup.ps1 up` or `setup.sh up`, always read the actual ports from `.runtime/ports.env`.
 
 | Service | Runtime URL / Port | Manual default | Credentials |
 |---|---|---|---|

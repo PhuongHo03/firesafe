@@ -6,9 +6,11 @@
 
 ## 🚀 Cách sử dụng
 
-### Runtime manager trên Windows
+### Runtime manager local
 
-Chạy từ project root:
+Chạy từ project root.
+
+Windows:
 
 ```powershell
 .\setup.ps1 up
@@ -16,11 +18,21 @@ Chạy từ project root:
 .\setup.ps1 clean
 ```
 
+Linux:
+
+```bash
+./setup.sh up
+./setup.sh down
+./setup.sh clean
+```
+
 | Command | Hành động |
 |---|---|
 | `up` | Tạo `.runtime/`, kiểm tra dependency, tự chuẩn bị JDK 21/frontend deps/AI Worker venv khi cần, ghi `frontend/.env.local`, start Docker infra, backend, frontend, AI Worker |
 | `down` | Dừng AI Worker/frontend/backend bằng PID file có metadata kiểm chứng, `docker compose down`, xóa `.runtime/`; giữ deps/build cache |
 | `clean` | Làm toàn bộ việc của `down`, `docker compose down -v --remove-orphans`, xóa thêm generated artifacts local |
+
+`setup.ps1` dùng PowerShell/Windows paths; `setup.sh` dùng Bash/Linux paths nhưng giữ cùng command, port keys, log layout và cleanup scope.
 
 Runtime metadata/logs được ghi vào (`docker.log` đợi infra running/healthy rồi mới ghi Docker Compose status và logs):
 
@@ -71,7 +83,7 @@ cd backend
 
 ## 📦 Các Service
 
-Các port trong bảng dưới là default khi chạy Docker Compose thủ công. Khi chạy bằng `setup.ps1 up`, port host được lấy từ `.runtime/ports.env`.
+Các port trong bảng dưới là default khi chạy Docker Compose thủ công. Khi chạy bằng runtime manager `up`, port host được lấy từ `.runtime/ports.env`.
 
 ### 1. `mariadb` — Database chính
 
@@ -261,11 +273,11 @@ Data tồn tại ngay cả khi container bị xóa, chỉ mất khi chạy `dock
 
 ## 🔍 Tại sao không có Backend/Frontend/AI Worker trong file này?
 
-File này cố tình **chỉ** bao gồm infrastructure Docker. Backend, Frontend và AI Worker chạy trực tiếp trên host qua `setup.ps1` vì:
+File này cố tình **chỉ** bao gồm infrastructure Docker. Backend, Frontend và AI Worker chạy trực tiếp trên host qua runtime manager vì:
 
 1. **Hot-reload:** Khi dev, bạn liên tục sửa code. Chạy Spring Boot/Next.js trên host cho phép reload nhanh, còn trong Docker phải rebuild image nhiều hơn.
 2. **Debug:** Attach debugger/log vào process host dễ hơn remote debug trong container.
-3. **Runtime linh hoạt:** `setup.ps1` quản lý backend/frontend/AI Worker bằng PID files, port động và log riêng; Docker Compose chỉ giữ DB/cache/queue/storage/dev UI.
+3. **Runtime linh hoạt:** `setup.ps1`/`setup.sh` quản lý backend/frontend/AI Worker bằng PID files, port động và log riêng; Docker Compose chỉ giữ DB/cache/queue/storage/dev UI.
 
 File `docker-compose.yml` production sau này sẽ bao gồm toàn bộ service: Nginx, Frontend, Backend, AI Worker và infrastructure.
 
@@ -282,8 +294,8 @@ File `docker-compose.yml` production sau này sẽ bao gồm toàn bộ service:
 | Adminer | `8081` / runtime `ADMINER_PORT` | `http://localhost:<ADMINER_PORT>` | Web UI quản lý MariaDB |
 | RedisInsight | `5540` / runtime `REDISINSIGHT_PORT` | `http://localhost:<REDISINSIGHT_PORT>` | Web UI quản lý Redis |
 
-Port thực tế luôn ưu tiên xem trong `.runtime/ports.env` sau khi chạy `setup.ps1 up`.
+Port thực tế luôn ưu tiên xem trong `.runtime/ports.env` sau khi chạy runtime manager `up`.
 
 ---
 
-*Tài liệu phản ánh trạng thái `docker-compose.dev.yml` và `setup.ps1` tại **Giai đoạn 6**. Infrastructure dev chạy bằng Docker Compose; backend/frontend/AI Worker chạy trên host qua runtime manager. File `docker-compose.yml` production sẽ bổ sung ở Giai đoạn 8.*
+*Tài liệu phản ánh trạng thái `docker-compose.dev.yml`, `setup.ps1` và `setup.sh` tại **Giai đoạn 6**. Infrastructure dev chạy bằng Docker Compose; backend/frontend/AI Worker chạy trên host qua runtime manager. File `docker-compose.yml` production sẽ bổ sung ở Giai đoạn 8.*

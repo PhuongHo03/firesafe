@@ -10,40 +10,56 @@
 mock-worker/
 ├── mock_worker.py         ← Script chính, chạy toàn bộ E2E test suite
 ├── requirements.txt       ← Dependencies: requests, minio, Pillow
-└── run-mock-worker.ps1    ← Runner Windows scoped trong mock-worker/, tự tạo venv và cài deps
+├── run-mock-worker.ps1    ← Runner Windows scoped trong mock-worker/, tự tạo venv và cài deps
+└── run-mock-worker.sh     ← Runner Linux scoped trong mock-worker/, tự tạo venv và cài deps
 ```
 
 ---
 
 ## 🚀 Cách sử dụng
 
-**Cách nhanh nhất (Tự động dùng venv trong `mock-worker/`, chạy toàn bộ suite):**
-Tại thư mục gốc của project, chạy:
+**Cách nhanh nhất bằng runner (Tự động dùng venv trong `mock-worker/`, cài dependencies và chạy toàn bộ suite):**
+
+Windows:
+
 ```powershell
 .\mock-worker\run-mock-worker.ps1
 ```
 
+Linux:
+
+```bash
+./mock-worker/run-mock-worker.sh
+```
+
 **Hoặc chạy thủ công từng bước:**
+
+Windows:
+
+```powershell
+cd mock-worker
+python -m venv venv
+.\venv\Scripts\python.exe -m pip install -r requirements.txt
+.\venv\Scripts\python.exe mock_worker.py
+.\venv\Scripts\python.exe mock_worker.py --test minio
+.\venv\Scripts\python.exe mock_worker.py --test pipeline
+.\venv\Scripts\python.exe mock_worker.py --test debounce
+```
+
+Linux:
+
 ```bash
 cd mock-worker
-
-# Tạo venv nếu chạy lần đầu
-python -m venv venv
-
-# Cài dependencies bằng Python trong venv
-.\venv\Scripts\python.exe -m pip install -r requirements.txt
-
-# Chạy toàn bộ E2E test suite
-.\venv\Scripts\python.exe mock_worker.py
-
-# Chỉ chạy một test cụ thể
-.\venv\Scripts\python.exe mock_worker.py --test minio      # Test MinIO upload
-.\venv\Scripts\python.exe mock_worker.py --test pipeline   # Test alert pipeline (upload → POST → verify DB)
-.\venv\Scripts\python.exe mock_worker.py --test debounce   # Test Redis debounce (10 alerts liên tiếp)
+python3 -m venv venv
+./venv/bin/python -m pip install -r requirements.txt
+./venv/bin/python mock_worker.py
+./venv/bin/python mock_worker.py --test minio
+./venv/bin/python mock_worker.py --test pipeline
+./venv/bin/python mock_worker.py --test debounce
 ```
 
 **Yêu cầu trước khi chạy:**
-1. Runtime chính đang chạy: `setup.ps1 up`
+1. Runtime chính đang chạy: `setup.ps1 up` trên Windows hoặc `setup.sh up` trên Linux
 2. Backend có ít nhất 1 camera thật/preset. Mock-worker sẽ lấy camera đầu tiên từ `GET /api/v1/cameras`, không tự seed camera.
 3. Nếu runtime đang dùng port động, truyền env tương ứng trước khi chạy thủ công: `BACKEND_URL`, `MINIO_URL`, `MINIO_PUBLIC_URL`.
 
@@ -155,7 +171,7 @@ MinIO   : http://localhost:<MINIO_API_PORT>
 | MinIO Console | `http://localhost:<MINIO_CONSOLE_PORT>` | `minioadmin`/`minioadmin` | Bucket `snapshots` có ảnh |
 | RedisInsight | `http://localhost:<REDISINSIGHT_PORT>` | Host: `firesafe-redis` | Key `alert:debounce:<cameraId>` có TTL |
 
-Port thực tế xem trong `.runtime/ports.env` sau khi chạy `setup.ps1 up`.
+Port thực tế xem trong `.runtime/ports.env` sau khi chạy runtime manager `up`.
 
 ---
 

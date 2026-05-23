@@ -11,6 +11,7 @@ video-detect/
 ├── detect_video.py          ← Entry point CLI
 ├── requirements.txt         ← Dependencies: ultralytics, opencv-python
 ├── run-video-detect.ps1     ← Runner Windows scoped trong video-detect/, tự tạo venv, cài deps và forward args
+├── run-video-detect.sh      ← Runner Linux scoped trong video-detect/, tự tạo venv, cài deps và forward args
 ├── src/
 │   ├── config.py            ← Parse CLI args + chọn model mặc định/fallback
 │   └── detector.py          ← Wrapper Ultralytics YOLO
@@ -37,11 +38,21 @@ Khác với `ai-worker/`:
 
 ## 🚀 Cách sử dụng
 
-Tại thư mục gốc project:
+Runner scoped trong `video-detect/`, chạy từ thư mục gốc project.
+
+Windows:
 
 ```powershell
 .\video-detect\run-video-detect.ps1 --source path\to\video.mp4
 ```
+
+Linux:
+
+```bash
+./video-detect/run-video-detect.sh --source path/to/video.mp4
+```
+
+Cả hai runner forward nguyên args vào `detect_video.py`. Các ví dụ dưới dùng runner Windows; trên Linux dùng cùng args với `./video-detect/run-video-detect.sh`.
 
 Lưu output đã vẽ bounding box:
 
@@ -77,19 +88,26 @@ Kết hợp nhiều cờ:
 
 ## 🚀 Cách chạy thủ công
 
-Nếu không dùng `run-video-detect.ps1`, chạy trực tiếp trong `video-detect/`:
+Nếu không dùng `run-video-detect.ps1` hoặc `run-video-detect.sh`, chạy trực tiếp trong `video-detect/`.
+
+Windows:
 
 ```powershell
 cd video-detect
 python -m venv venv
 .\venv\Scripts\python.exe -m pip install -r requirements.txt
 .\venv\Scripts\python.exe detect_video.py --source path\to\video.mp4 --save
+.\venv\Scripts\python.exe detect_video.py --source path\to\video.mp4 --model .\models\best.pt --conf 0.4
 ```
 
-Chạy với model khác:
+Linux:
 
-```powershell
-.\venv\Scripts\python.exe detect_video.py --source path\to\video.mp4 --model .\models\best.pt --conf 0.4
+```bash
+cd video-detect
+python3 -m venv venv
+./venv/bin/python -m pip install -r requirements.txt
+./venv/bin/python detect_video.py --source path/to/video.mp4 --save
+./venv/bin/python detect_video.py --source path/to/video.mp4 --model ./models/best.pt --conf 0.4
 ```
 
 ---
@@ -97,10 +115,10 @@ Chạy với model khác:
 ## ⚙️ Luồng chạy
 
 ```text
-run-video-detect.ps1
+run-video-detect.ps1, run-video-detect.sh hoặc manual Python venv
     → tạo video-detect/venv nếu chưa có
-    → cài dependencies bằng video-detect/venv/Scripts/python.exe
-    → chạy detect_video.py @DetectArgs bằng Python trong venv
+    → cài dependencies bằng Python trong venv
+    → chạy detect_video.py với args CLI
         → src/config.py parse args
         → chọn model
         → src/detector.py load YOLO
@@ -165,7 +183,8 @@ video-detect/runs/detect/
 |---|---:|---|
 | `detect_video.py` | Có | Entry point CLI |
 | `requirements.txt` | Có | Khai báo dependencies |
-| `run-video-detect.ps1` | Có | Runner tự tạo venv/cài deps/forward args |
+| `run-video-detect.ps1` | Có | Runner Windows tự tạo venv/cài deps/forward args |
+| `run-video-detect.sh` | Có | Runner Linux tự tạo venv/cài deps/forward args |
 | `src/config.py` | Có | Parse args + model fallback |
 | `src/detector.py` | Có | Load YOLO + predict source file |
 | `models/*.pt` | Local | Model nặng, tải riêng, đã ignore |

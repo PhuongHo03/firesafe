@@ -21,7 +21,7 @@ ai-worker/
     └── backend_client.py              ← Login backend + POST /api/v1/alerts
 ```
 
-AI Worker service được `setup.ps1 up` tự start nền, ghi log vào `.runtime/logs/ai-worker.log`.
+AI Worker service được runtime manager (`setup.ps1 up` trên Windows hoặc `setup.sh up` trên Linux) tự start nền, ghi log vào `.runtime/logs/ai-worker.log`.
 
 ---
 
@@ -43,7 +43,7 @@ Browser không đọc trực tiếp `rtsp://`, nên AI Worker service bridge RTS
 
 ### CLI debug video local
 
-CLI debug video/image local đã tách sang `video-detect/`. Luồng này chạy độc lập, không kết nối backend, MinIO, auth, alert, và không được `setup.ps1` quản lý.
+CLI debug video/image local đã tách sang `video-detect/`. Luồng này chạy độc lập, không kết nối backend, MinIO, auth, alert, và không được runtime manager quản lý.
 
 ---
 
@@ -63,11 +63,11 @@ ai-worker\models\wildfire-smoke-fire.pt
 ai-worker\models\best.pt
 ```
 
-Khi không truyền `--model`, Python service chọn `wildfire-smoke-fire.pt` trước; nếu không có thì fallback sang `best.pt`. `setup.ps1 up` không tự chọn model nữa, chỉ gọi service và để Python xử lý fallback. Nếu thiếu cả hai model, `src/detector.py` báo lỗi rõ trong `.runtime/logs/ai-worker.log`. Muốn dùng `best.pt` hoặc model `.pt` khác thì truyền `--model`, ví dụ `--model ./models/best.pt` hoặc `--model ./models/custom.pt`.
+Khi không truyền `--model`, Python service chọn `wildfire-smoke-fire.pt` trước; nếu không có thì fallback sang `best.pt`. Runtime manager `up` không tự chọn model nữa, chỉ gọi service và để Python xử lý fallback. Nếu thiếu cả hai model, `src/detector.py` báo lỗi rõ trong `.runtime/logs/ai-worker.log`. Muốn dùng `best.pt` hoặc model `.pt` khác thì truyền `--model`, ví dụ `--model ./models/best.pt` hoặc `--model ./models/custom.pt`.
 
 ---
 
-## 🚀 Cách chạy Windows
+## 🚀 Cách chạy bằng runtime manager
 
 Từ project root:
 
@@ -75,10 +75,14 @@ Từ project root:
 .\setup.ps1 up
 ```
 
-`setup.ps1` tự tạo/dùng virtual environment riêng tại:
+```bash
+./setup.sh up
+```
 
-```powershell
-ai-worker\venv
+Runtime manager tự tạo/dùng virtual environment riêng tại:
+
+```text
+ai-worker/venv
 ```
 
 Sau đó mở:
@@ -93,6 +97,10 @@ Thêm camera với RTSP URL rồi bấm **Start Detect**. Port thực tế xem t
 Get-Content .runtime\ports.env
 ```
 
+```bash
+cat .runtime/ports.env
+```
+
 AI Worker health:
 
 ```text
@@ -103,13 +111,20 @@ http://localhost:<AI_WORKER_PORT>/health
 
 ## 🚀 Cách chạy service thủ công
 
-Bình thường dùng `setup.ps1 up`. Nếu cần chạy riêng AI Worker service:
+Bình thường dùng runtime manager `up`. Nếu cần chạy riêng AI Worker service:
 
 ```powershell
 cd ai-worker
 python -m venv venv
 .\venv\Scripts\python.exe -m pip install -r requirements.txt
 .\venv\Scripts\python.exe service.py --port 8090 --model .\models\best.pt
+```
+
+```bash
+cd ai-worker
+python3 -m venv venv
+./venv/bin/python -m pip install -r requirements.txt
+./venv/bin/python service.py --port 8090 --model ./models/best.pt
 ```
 
 ---
@@ -186,6 +201,10 @@ Yêu cầu runtime local:
 
 ```powershell
 .\setup.ps1 up
+```
+
+```bash
+./setup.sh up
 ```
 
 Camera phải tồn tại trong DB trước khi bấm Start Detect trên trang `/cameras`.
