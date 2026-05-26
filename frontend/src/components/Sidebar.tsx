@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import { Flame, LayoutDashboard, Camera, LogOut } from "lucide-react";
+import { Flame, LayoutDashboard, Camera, LogOut, ListChecks } from "lucide-react";
 import { clearAuth, getUser, isAdmin } from "@/lib/auth";
 
 export default function Sidebar() {
@@ -24,6 +24,7 @@ export default function Sidebar() {
 
   const links = [
     { href: "/", icon: LayoutDashboard, label: "Dashboard" },
+    { href: "/alerts", icon: ListChecks, label: "Alerts" },
     { href: "/cameras", icon: Camera, label: "Cameras" },
   ];
 

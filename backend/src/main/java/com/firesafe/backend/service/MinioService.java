@@ -9,6 +9,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.InputStream;
+import java.net.URI;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
@@ -99,6 +102,33 @@ public class MinioService {
                     .build());
         } catch (Exception e) {
             throw new RuntimeException("Failed to generate pre-signed URL for: " + objectName, e);
+        }
+    }
+
+    public void deleteObjectByUrl(String imageUrl) {
+        try {
+            String prefix = "/" + bucket + "/";
+            String path = URI.create(imageUrl).getPath();
+            if (path == null || !path.startsWith(prefix) || path.length() == prefix.length()) {
+                log.warn("Skip MinIO delete for non-bucket URL: {}", imageUrl);
+                return;
+            }
+            String objectName = URLDecoder.decode(path.substring(prefix.length()), StandardCharsets.UTF_8);
+            deleteObject(objectName);
+        } catch (Exception e) {
+            log.warn("Failed to delete MinIO object from URL: {}", imageUrl, e);
+        }
+    }
+
+    public void deleteObject(String objectName) {
+        try {
+            minioClient.removeObject(RemoveObjectArgs.builder()
+                    .bucket(bucket)
+                    .object(objectName)
+                    .build());
+            log.info("Deleted MinIO object: {}", objectName);
+        } catch (Exception e) {
+            log.warn("Failed to delete MinIO object: {}", objectName, e);
         }
     }
 }

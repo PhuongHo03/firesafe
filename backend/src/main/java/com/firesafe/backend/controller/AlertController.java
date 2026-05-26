@@ -13,6 +13,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -42,5 +43,21 @@ public class AlertController {
     @Operation(summary = "Get a single alert by ID")
     public ResponseEntity<AlertResponse> getAlert(@PathVariable Long id) {
         return ResponseEntity.ok(alertService.getAlertById(id));
+    }
+
+    @DeleteMapping
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Delete all alerts (ADMIN only)")
+    public ResponseEntity<Void> deleteAllAlerts() {
+        alertService.deleteAllAlerts();
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Delete an alert (ADMIN only)")
+    public ResponseEntity<Void> deleteAlert(@PathVariable Long id) {
+        alertService.deleteAlert(id);
+        return ResponseEntity.noContent().build();
     }
 }

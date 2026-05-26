@@ -13,15 +13,15 @@ ai-worker/
 ├── models/                            ← Đặt wildfire-smoke-fire.pt hoặc best.pt tại đây
 └── src/
     ├── __init__.py
-    ├── camera_worker.py               ← RTSP reader thread + YOLO detector thread + gửi alert
+    ├── camera_worker.py               ← Shared RTSP reader + YOLO detect thread + sustained alert cooldown
     ├── config.py                      ← Đường dẫn model mặc định/fallback cho service
-    ├── detector.py                    ← Wrapper Ultralytics YOLO + thông báo lỗi model thiếu
+    ├── detector.py                    ← Wrapper Ultralytics YOLO predict + thông báo lỗi model thiếu
     ├── snapshot.py                    ← Encode annotated frame thành PNG bytes
     ├── storage.py                     ← Upload snapshot lên MinIO
     └── backend_client.py              ← Login backend + POST /api/v1/alerts
 ```
 
-AI Worker service được runtime manager (`setup.ps1 up` trên Windows hoặc `setup.sh up` trên Linux) tự start nền, ghi log vào `.runtime/logs/ai-worker.log`.
+AI Worker service được runtime manager (`setup.ps1 up` trên Windows hoặc `setup.sh up` trên Linux) tự start nền, ghi log unbuffered vào `.runtime/logs/ai-worker.log`, gồm startup config và trạng thái mở RTSP theo từng camera/transport.
 
 ---
 
@@ -32,10 +32,11 @@ AI Worker service được runtime manager (`setup.ps1 up` trên Windows hoặc 
 ```
 Trang /cameras
     → POST AI Worker /api/cameras/start
-    → CameraWorker mở RTSP bằng OpenCV/FFmpeg TCP
-    → reader thread cập nhật latest frame + MJPEG preview
-    → detector thread lấy latest frame và chạy YOLO theo interval
-    → nếu có fire/smoke: vẽ bounding box, upload MinIO, POST /api/v1/alerts
+    → SharedRtspSource mở mỗi RTSP URL một lần bằng OpenCV/FFmpeg; Hikvision mainstream `.../Streaming/Channels/*01` fail thì thử substream `*02`
+    → reader thread cập nhật latest raw frame dùng chung
+    → mỗi CameraWorker có YOLO detect thread riêng lấy latest frame theo interval
+    → MJPEG preview luôn lấy raw frame mới nhất và vẽ bbox detect còn hạn TTL
+    → nếu fire/smoke duy trì đủ ngưỡng sustained và hết cooldown camera/zone: upload MinIO, POST /api/v1/alerts
     → Dashboard hiển thị alert
 ```
 
@@ -131,12 +132,14 @@ python3 -m venv venv
 
 ## ⚙️ Service Arguments
 
+`ai-worker/.env.local` có thể cấu hình local cho service, ví dụ `AI_WORKER_CONF=0.5`; RTSP mặc định thử `default,udp,tcp` để ưu tiên nhiều channel rồi fallback sang TCP khi cần ổn định.
+
 | Argument | Bắt buộc | Default | Mô tả |
 |---|---:|---|---|
 | `--host` | Không | `127.0.0.1` | Host bind service |
 | `--port` | Không | `8090` | Port HTTP service |
 | `--model` | Không | `models/wildfire-smoke-fire.pt`, fallback `models/best.pt` | Path model YOLO `.pt`; nếu truyền cờ này thì dùng đúng path đó và không fallback |
-| `--conf` | Không | `0.25` | Ngưỡng confidence |
+| `--conf` | Không | `AI_WORKER_CONF` trong `ai-worker/.env.local`, fallback `0.25` | Ngưỡng confidence |
 | `--backend-url` | Không | `http://localhost:8080` | Backend API base URL |
 | `--username` | Không | `admin` | User backend để login |
 | `--password` | Không | `admin123` | Password backend để login |
@@ -147,6 +150,10 @@ python3 -m venv venv
 | `--alert-cooldown-seconds` | Không | `30.0` | Khoảng cách tối thiểu giữa 2 alert do AI Worker gửi |
 | `--detection-interval-seconds` | Không | `1.0` | Khoảng cách giữa các lần YOLO inference |
 | `--reconnect-delay-seconds` | Không | `5.0` | Số giây chờ trước khi reconnect RTSP; backoff tối đa 30s |
+| `--rtsp-transports` | Không | `AI_WORKER_RTSP_TRANSPORTS`, fallback `default,udp,tcp` | Thứ tự thử RTSP transport; `default` là không ép FFmpeg |
+| `--rtsp-buffer-size` | Không | `AI_WORKER_RTSP_BUFFER_SIZE`, fallback `1` | OpenCV capture buffer size; `0` để bỏ qua |
+| `--overlay-ttl-seconds` | Không | `AI_WORKER_OVERLAY_TTL_SECONDS`, fallback `2.0` | Số giây giữ bbox detect trên preview live |
+| `--sustained-detection-seconds` | Không | `AI_WORKER_SUSTAINED_DETECTION_SECONDS`, fallback `3.0` | Số giây fire/smoke phải duy trì trước khi gửi alert |
 
 ---
 
@@ -155,12 +162,14 @@ python3 -m venv venv
 | Endpoint | Method | Mục đích |
 |---|---|---|
 | `/health` | GET | Health check, trả `{ "status": "UP" }` |
+| `/api/monitoring/summary` | GET | Monitoring JSON cũ: status, số workers/sources, trạng thái từng camera đang detect |
+| `/metrics` | GET | Prometheus text metrics cho monitoring-service: worker/source/camera counters và inference avg |
 | `/api/cameras/start` | POST | Start worker cho camera; body tối thiểu `{ cameraId, rtspUrl }` |
 | `/api/cameras/stop` | POST | Stop worker theo `cameraId` |
 | `/api/cameras/{id}/status` | GET | Trả trạng thái `{ cameraId, running, error, lastAlertAt, hasFrame }` |
 | `/api/cameras/{id}/stream.mjpg` | GET | MJPEG stream cho frontend render bằng `<img>` |
 
-Nếu bấm Start nhiều lần cho cùng camera, service trả status worker đang có và không tạo thêm RTSP session.
+Nếu bấm Start nhiều lần cho cùng camera, service trả status worker đang có và không tạo thêm RTSP session. Nếu nhiều camera dùng cùng `rtspUrl`, service chỉ mở một RTSP capture rồi chia sẻ frame cho các detector/preview tương ứng. Với URL Hikvision dạng `.../Streaming/Channels/*01`, nếu mainstream không mở được thì AI Worker tự thử substream `*02` để tránh giới hạn băng thông/session của thiết bị.
 
 ---
 
@@ -169,10 +178,10 @@ Nếu bấm Start nhiều lần cho cùng camera, service trả status worker đ
 AI Worker service upload snapshot PNG lên bucket MinIO `snapshots` theo object key:
 
 ```text
-cam-001/YYYY-mm-ddTHH-MM-SS-label.png
+cam-001/YYYY-mm-ddTHH-MM-SS-ffffff-label.png
 ```
 
-URL trả về là pre-signed URL có hạn 7 ngày.
+URL trả về là pre-signed URL có hạn 7 ngày. Object key vẫn theo từng camera (`cam-XXX/...`); alert không phụ thuộc track ID.
 
 Alert payload gửi backend:
 
@@ -214,7 +223,9 @@ Camera phải tồn tại trong DB trước khi bấm Start Detect trên trang `
 ## ⚠️ Giới hạn hiện tại
 
 - RTSP loop đã có reconnect backoff 5s → 10s → 20s → 30s.
-- OpenCV đọc RTSP qua FFmpeg TCP; nếu VLC/ffplay không mở được URL thì AI Worker cũng không mở được.
+- OpenCV đọc RTSP qua FFmpeg; nếu VLC/ffplay không mở được URL thì AI Worker cũng không mở được.
+- AI Worker tránh mở trùng cùng một `rtspUrl` và tự fallback Hikvision mainstream `*01` sang substream `*02`; nếu thiết bị vẫn giới hạn mọi channel về 1 session thì phải tăng giới hạn trên thiết bị/NVR.
+- Alert dùng sustained detection + camera/zone cooldown nên không tạo alert riêng cho từng object trong cùng khung hình.
 - Chưa export ONNX/TensorRT.
 - Chưa expose metrics Prometheus.
 - Chưa benchmark false positive/false negative trên video thực tế.
@@ -222,4 +233,4 @@ Camera phải tồn tại trong DB trước khi bấm Start Detect trên trang `
 
 ---
 
-*Tài liệu phản ánh trạng thái ai-worker tại **Giai đoạn 6**. Phiên bản hiện tại là RTSP HTTP service host-process: preview MJPEG, YOLO detect realtime, upload MinIO và gửi alert thật về backend.*
+*Tài liệu phản ánh trạng thái ai-worker tại **Giai đoạn 7**. Phiên bản hiện tại là RTSP HTTP service host-process: preview MJPEG, YOLO detect realtime, upload MinIO, gửi alert thật về backend và export Prometheus metrics cho monitoring-service.*

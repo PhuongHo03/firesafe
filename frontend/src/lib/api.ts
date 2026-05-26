@@ -1,14 +1,15 @@
 // Centralized API client — reads NEXT_PUBLIC_API_URL from env
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
 const AI_WORKER_URL = process.env.NEXT_PUBLIC_AI_WORKER_URL ?? "http://localhost:8090";
+const MONITORING_URL = process.env.NEXT_PUBLIC_MONITORING_URL ?? "http://localhost:8091";
 
 async function request<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
-    headers: { "Content-Type": "application/json", ...options.headers },
     ...options,
+    headers: { "Content-Type": "application/json", ...options.headers },
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ title: res.statusText }));
@@ -25,12 +26,21 @@ async function requestAI<T>(
   options: RequestInit = {}
 ): Promise<T> {
   const res = await fetch(`${AI_WORKER_URL}${path}`, {
-    headers: { "Content-Type": "application/json", ...options.headers },
     ...options,
+    headers: { "Content-Type": "application/json", ...options.headers },
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(err.error ?? "AI Worker error");
+  }
+  return res.json() as Promise<T>;
+}
+
+async function requestMonitoring<T>(path: string): Promise<T> {
+  const res = await fetch(`${MONITORING_URL}${path}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error ?? "Monitoring service error");
   }
   return res.json() as Promise<T>;
 }
@@ -55,6 +65,20 @@ export const api = {
 
   getAlert(id: number, token: string) {
     return request<Alert>(`/api/v1/alerts/${id}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  },
+
+  deleteAlert(id: number, token: string) {
+    return request<void>(`/api/v1/alerts/${id}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  },
+
+  deleteAllAlerts(token: string) {
+    return request<void>("/api/v1/alerts", {
+      method: "DELETE",
       headers: { Authorization: `Bearer ${token}` },
     });
   },
@@ -101,6 +125,10 @@ export const api = {
   getCameraStreamUrl(cameraId: number) {
     return `${AI_WORKER_URL}/api/cameras/${cameraId}/stream.mjpg`;
   },
+
+  getDashboardMetrics() {
+    return requestMonitoring<DashboardMetrics>("/api/dashboard/metrics");
+  },
 };
 
 export interface Alert {
@@ -128,4 +156,56 @@ export interface CameraDetectionStatus {
   error: string | null;
   lastAlertAt?: string | null;
   hasFrame?: boolean;
+}
+
+export interface DashboardMetrics {
+  generatedAt: string;
+  backend: {
+    status: string;
+    requestsTotal: number;
+    errorRate: number;
+    avgLatencyMs: number;
+    uptimeSeconds: number;
+    error?: string;
+  };
+  aiWorker: {
+    status: string;
+    workers: number;
+    sources: number;
+    cameras: Array<{
+      cameraId: number;
+      running?: boolean;
+      hasFrame?: boolean;
+      hasError?: boolean;
+      detectionsTotal?: number;
+      alertsSentTotal?: number;
+      inferenceMsAvg?: number;
+    }>;
+    error?: string;
+  };
+  system: {
+    cpuPct: number;
+    ramUsedBytes: number;
+    ramTotalBytes: number;
+    diskUsedBytes: number;
+    diskTotalBytes: number;
+    gpu: { available: false } | { available: true; utilPct: number; memoryUsedBytes: number; memoryTotalBytes: number };
+  };
+  infra: {
+    redis: { status: string; usedMemoryBytes: number; keyCount: number; error?: string };
+    rabbitmq: { status: string; messages: number; consumers: number; error?: string };
+    minio: { status: string; objectCount: number; bytes: number; error?: string };
+  };
+  alerts: {
+    total: number;
+    newCount: number;
+    last24h: number;
+    highConfidenceLast24h: number;
+    byLabel: Array<{ label: string; count: number }>;
+    hourly: Array<{ hour: string; count: number }>;
+  };
+  cameras: {
+    total: number;
+    active: number;
+  };
 }

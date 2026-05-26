@@ -9,4 +9,5 @@ import java.util.Optional;
 public interface CameraRepository extends JpaRepository<Camera, Long> {
     List<Camera> findByIsActiveTrue();
     Optional<Camera> findByRtspUrl(String rtspUrl);
+    long countByIsActiveTrue();
 }

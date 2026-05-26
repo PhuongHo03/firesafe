@@ -14,7 +14,7 @@ class MinioSnapshotStorage:
         if not self.client.bucket_exists(self.bucket):
             self.client.make_bucket(self.bucket)
 
-        ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S-%f")
         object_name = f"cam-{camera_id:03d}/{ts}-{label}.png"
         self.client.put_object(
             self.bucket,

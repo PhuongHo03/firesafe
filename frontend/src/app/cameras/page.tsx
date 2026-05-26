@@ -5,7 +5,7 @@ import { isAdmin } from "@/lib/auth";
 import Sidebar from "@/components/Sidebar";
 import { useCameras } from "@/hooks/useCameras";
 import { api, CameraDetectionStatus } from "@/lib/api";
-import { Camera as CameraIcon, Play, Plus, Square, Trash2, Wifi, WifiOff } from "lucide-react";
+import { Camera as CameraIcon, Loader2, Play, Plus, Square, Trash2, Wifi, WifiOff } from "lucide-react";
 
 export default function CamerasPage() {
   const { cameras, loading, error, setError, addCamera, deleteCamera } = useCameras();
@@ -148,6 +148,7 @@ export default function CamerasPage() {
             {cameras.map(cam => {
               const status = detectionStatus[cam.id];
               const running = Boolean(status?.running);
+              const hasWorker = Boolean(status && (status.running || status.error || status.hasFrame || status.lastAlertAt));
               const busy = busyCameraId === cam.id;
 
               return (
@@ -165,9 +166,9 @@ export default function CamerasPage() {
                       <div style={{ fontWeight: 600, marginBottom: "0.2rem" }}>{cam.name}</div>
                       <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>{cam.location}</div>
                     </div>
-                    <span style={{ display: "flex", alignItems: "center", gap: "0.3rem", fontSize: "0.75rem", color: running ? "var(--green)" : "var(--text-muted)" }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: "0.3rem", fontSize: "0.75rem", color: running ? "var(--green)" : hasWorker ? "var(--accent)" : "var(--text-muted)" }}>
                       {running ? <Wifi size={13} /> : <WifiOff size={13} />}
-                      {running ? "Detecting" : "Stopped"}
+                      {running ? "Detecting" : hasWorker ? "Error" : "Stopped"}
                     </span>
                   </div>
 
@@ -180,13 +181,13 @@ export default function CamerasPage() {
                   )}
 
                   <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", justifyContent: "space-between" }}>
-                    {running ? (
-                      <button id={`stop-detect-${cam.id}`} disabled={busy} onClick={() => stopDetection(cam.id)} style={{ display: "flex", alignItems: "center", gap: "0.35rem", ...btnStyle, background: "var(--surface-2)", color: "var(--text)" }}>
-                        <Square size={13} /> Stop
+                    {hasWorker ? (
+                      <button id={`stop-detect-${cam.id}`} disabled={busy} onClick={() => stopDetection(cam.id)} style={{ display: "flex", alignItems: "center", gap: "0.35rem", ...btnStyle, background: "var(--surface-2)", color: "var(--text)", cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.7 : 1 }}>
+                        {busy ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Square size={13} />} {busy ? "Đang dừng..." : "Stop"}
                       </button>
                     ) : (
-                      <button id={`start-detect-${cam.id}`} disabled={busy} onClick={() => startDetection(cam.id)} style={{ display: "flex", alignItems: "center", gap: "0.35rem", ...btnStyle, background: "var(--accent)", color: "#fff" }}>
-                        <Play size={13} /> Start Detect
+                      <button id={`start-detect-${cam.id}`} disabled={busy} onClick={() => startDetection(cam.id)} style={{ display: "flex", alignItems: "center", gap: "0.35rem", ...btnStyle, background: "var(--accent)", color: "#fff", cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.7 : 1 }}>
+                        {busy ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Play size={13} />} {busy ? "Đang bật..." : "Start Detect"}
                       </button>
                     )}
 
@@ -201,6 +202,7 @@ export default function CamerasPage() {
             })}
           </div>
         )}
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </main>
     </div>
   );

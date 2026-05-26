@@ -28,13 +28,13 @@ Linux:
 
 | Command | Hành động |
 |---|---|
-| `up` | Tạo `.runtime/`, kiểm tra dependency, tự chuẩn bị JDK 21/frontend deps/AI Worker venv khi cần, ghi `frontend/.env.local`, start Docker infra, backend, frontend, AI Worker |
-| `down` | Dừng AI Worker/frontend/backend bằng PID file có metadata kiểm chứng, `docker compose down`, xóa `.runtime/`; giữ deps/build cache |
+| `up` | Tạo `.runtime/`, kiểm tra dependency, tự chuẩn bị JDK 21/frontend deps/AI Worker/monitoring-service venv khi cần, ghi `frontend/.env.local`, start Docker infra, backend, AI Worker, monitoring-service, frontend |
+| `down` | Dừng monitoring-service/AI Worker/frontend/backend bằng PID file có metadata kiểm chứng, `docker compose down`, xóa `.runtime/`; giữ deps/build cache |
 | `clean` | Làm toàn bộ việc của `down`, `docker compose down -v --remove-orphans`, xóa thêm generated artifacts local |
 
 `setup.ps1` dùng PowerShell/Windows paths; `setup.sh` dùng Bash/Linux paths nhưng giữ cùng command, port keys, log layout và cleanup scope.
 
-Runtime metadata/logs được ghi vào (`docker.log` đợi infra running/healthy rồi mới ghi Docker Compose status và logs):
+Runtime metadata/logs được ghi vào (`docker.log` đợi infra running/healthy rồi mới ghi Docker Compose status và logs). Mỗi file `.log` chỉ giữ 50 dòng cuối để tránh phình `.runtime/`:
 
 ```text
 .runtime/ports.env
@@ -42,11 +42,12 @@ Runtime metadata/logs được ghi vào (`docker.log` đợi infra running/healt
 .runtime/logs/backend.log
 .runtime/logs/frontend.log
 .runtime/logs/ai-worker.log
+.runtime/logs/monitoring-service.log
 ```
 
-`ports.env` chứa port host của backend, frontend, AI Worker, MariaDB, Redis, RabbitMQ, MinIO, Adminer, RedisInsight. `up` ưu tiên port mặc định cho backend/frontend/AI Worker. Các port infra được cấp từ dải `7001+` theo thứ tự Adminer, MinIO Console, RedisInsight, RabbitMQ UI, MariaDB, MinIO API, Redis, RabbitMQ; nếu port bận, script tự tăng dần tới port trống tiếp theo và truyền vào Docker Compose/backend/frontend/AI Worker.
+`ports.env` chứa port host của backend, frontend, AI Worker, Monitoring service, MariaDB, Redis, RabbitMQ, MinIO, Adminer, RedisInsight. `up` ưu tiên port mặc định cho backend/frontend/AI Worker/Monitoring service. Các port infra được cấp từ dải `7001+` theo thứ tự Adminer, MinIO Console, RedisInsight, RabbitMQ UI, MariaDB, MinIO API, Redis, RabbitMQ; nếu port bận, script tự tăng dần tới port trống tiếp theo và truyền vào Docker Compose/backend/frontend/AI Worker/Monitoring service.
 
-Trước khi start, `up` kiểm tra Docker, Node/npm và Python đã có trên máy. Nếu thiếu các công cụ hệ thống này, script dừng và in hướng dẫn cài đặt. Với Java, script ưu tiên `jdk-21.0.3+9` trong project; nếu chưa có Java 21 trong PATH thì tự tải JDK 21 về project. Nếu `frontend/node_modules` chưa tồn tại, script tự chạy `npm install` trong `frontend/`. AI Worker tự tạo `ai-worker/venv` và cài `requirements.txt` khi start. Sau khi chọn port, script ghi `frontend/.env.local` với `NEXT_PUBLIC_API_URL` và `NEXT_PUBLIC_AI_WORKER_URL` khớp port backend/AI Worker hiện tại.
+Trước khi start, `up` kiểm tra Docker, Node/npm và Python đã có trên máy. Nếu thiếu các công cụ hệ thống này, script dừng và in hướng dẫn cài đặt. Với Java, script ưu tiên `jdk-21.0.3+9` trong project; nếu chưa có Java 21 trong PATH thì tự tải JDK 21 về project. Nếu `frontend/node_modules` chưa tồn tại, script tự chạy `npm install` trong `frontend/`. AI Worker và Monitoring service tự tạo venv riêng và cài `requirements.txt` khi start. Sau khi chọn port, script ghi `frontend/.env.local` với `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_AI_WORKER_URL` và `NEXT_PUBLIC_MONITORING_URL` khớp port runtime hiện tại.
 
 `down` xóa runtime artifacts gồm ports/logs/PID trong `.runtime/`, nhưng giữ `ai-worker/venv/`, `frontend/node_modules/`, `frontend/.next/`, `backend/target/` và local JDK để lần sau khởi động nhanh. Host-process chỉ bị dừng khi PID file khớp metadata process do chính `setup.ps1` start trong đúng thư mục service; script không kill theo port để tránh dừng nhầm process của dự án khác. `clean` là chế độ aggressive trong phạm vi project: xóa container, volume và orphan thuộc compose project này, không xóa Docker image dùng chung, xóa `.runtime/`, rồi xóa thêm `ai-worker/venv/`, `frontend/node_modules/`, `frontend/.next/`, `backend/target/`, `jdk-21.0.3+9/`.
 
@@ -213,6 +214,18 @@ minio.bucket: snapshots
 
 ---
 
+## 📊 Monitoring MVP
+
+Giai đoạn 7 dùng `monitoring-service/` riêng để scrape metrics và trả JSON cho Dashboard UI (`/`), không dùng Grafana trong local MVP:
+
+- Backend export nhẹ: `/actuator/prometheus` cho JVM/API metrics và `/api/v1/metrics/export` cho alert/camera business aggregates.
+- AI Worker export nhẹ: `/metrics` dạng Prometheus text cho worker/source/camera runtime counters.
+- Monitoring service ping/scrape Backend, AI Worker, Redis, RabbitMQ, MinIO và host system metrics rồi trả `/api/dashboard/metrics`.
+- Frontend Dashboard đọc `NEXT_PUBLIC_MONITORING_URL`, vẽ cards/charts trực tiếp trong UI.
+- Prometheus/Grafana container được defer cho production nếu cần dashboard ngoài app.
+
+---
+
 ## 🔧 Dev Tool Services
 
 ### 5. `adminer` — Web UI cho MariaDB
@@ -298,4 +311,4 @@ Port thực tế luôn ưu tiên xem trong `.runtime/ports.env` sau khi chạy r
 
 ---
 
-*Tài liệu phản ánh trạng thái `docker-compose.dev.yml`, `setup.ps1` và `setup.sh` tại **Giai đoạn 6**. Infrastructure dev chạy bằng Docker Compose; backend/frontend/AI Worker chạy trên host qua runtime manager. File `docker-compose.yml` production sẽ bổ sung ở Giai đoạn 8.*
+*Tài liệu phản ánh trạng thái `docker-compose.dev.yml`, `setup.ps1` và `setup.sh` tại **Giai đoạn 7**. Infrastructure dev chạy bằng Docker Compose; backend/frontend/AI Worker/Monitoring service chạy trên host qua runtime manager. File `docker-compose.yml` production sẽ bổ sung ở Giai đoạn 8.*

@@ -28,7 +28,7 @@ backend/
     │   │   │
     │   │   ├── controller/                          ← REST API — nhận request, trả response
     │   │   │   ├── AuthController.java              ← POST /api/v1/auth/login
-    │   │   │   ├── AlertController.java             ← GET/POST /api/v1/alerts
+    │   │   │   ├── AlertController.java             ← GET/POST/DELETE /api/v1/alerts
     │   │   │   └── CameraController.java            ← CRUD /api/v1/cameras
     │   │   │
     │   │   ├── dto/                                 ← Data Transfer Objects (API contract)
@@ -132,6 +132,18 @@ http://localhost:8080
 ```
 
 Khi dùng runtime manager `up`, backend có thể chạy ở `http://localhost:<BACKEND_PORT>` nếu port mặc định bận.
+
+Swagger UI:
+
+```text
+http://localhost:<BACKEND_PORT>/swagger-ui.html
+```
+
+Ví dụ nếu backend chạy ở port 8080:
+
+```text
+http://localhost:8080/swagger-ui.html
+```
 
 ---
 
@@ -331,7 +343,7 @@ Page<Alert> findByCameraIdOrderByDetectedAtDesc(Long cameraId, Pageable pageable
 |---|---|---|
 | `LoginRequest` | Client → Server | `{username, password}` |
 | `LoginResponse` | Server → Client | `{token, username, roles[]}` |
-| `AlertRequest` | AI Worker → Server | Payload khi phát hiện lửa/khói |
+| `AlertRequest` | AI Worker → Server | Payload khi fire/smoke duy trì đủ ngưỡng và hết cooldown camera/zone |
 | `AlertResponse` | Server → Client | Alert kèm `cameraName` |
 | `CameraRequest` | Client → Server | Tạo/cập nhật camera |
 | `CameraResponse` | Server → Client | Thông tin camera (ẩn field internal) |
@@ -438,6 +450,10 @@ LoginRequest → AuthenticationManager.authenticate()
 | `/api/v1/alerts` | POST | AI Worker gửi alert mới |
 | `/api/v1/alerts?cameraId=1&page=0` | GET | Danh sách alerts (filter + phân trang) |
 | `/api/v1/alerts/{id}` | GET | Chi tiết một alert |
+| `/api/v1/alerts` | DELETE | Xóa tất cả alert (ADMIN), cleanup MinIO snapshot và Redis debounce |
+| `/api/v1/alerts/{id}` | DELETE | Xóa một alert (ADMIN), cleanup MinIO snapshot và Redis debounce nếu key còn trỏ tới alert đó |
+| `/api/v1/monitoring/summary` | GET | Monitoring summary cũ cho Dashboard: backend status, alert totals/24h/high-confidence, camera total/active |
+| `/api/v1/metrics/export` | GET | Export business metrics nhẹ cho monitoring-service: alert totals, hourly/byLabel, camera total/active |
 
 #### `CameraController`
 
@@ -532,4 +548,4 @@ Bắt exception từ bất kỳ đâu → chuyển thành HTTP response chuẩn 
 
 ---
 
-*Tài liệu phản ánh trạng thái backend tại **Giai đoạn 6**. Backend đã hỗ trợ preset RTSP camera từ env, alert ingestion từ AI Worker, Redis debounce, RabbitMQ notification và MinIO snapshot URLs.*
+*Tài liệu phản ánh trạng thái backend tại **Giai đoạn 7**. Backend đã hỗ trợ preset RTSP camera từ env, alert ingestion từ AI Worker, Redis debounce, RabbitMQ notification, MinIO snapshot URLs và metrics export nhẹ cho monitoring-service.*

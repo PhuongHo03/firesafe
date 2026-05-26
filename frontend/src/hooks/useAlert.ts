@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { api, Alert } from "@/lib/api";
 import { getToken } from "@/lib/auth";
@@ -11,11 +11,11 @@ export function useAlert(id: number) {
   const token = getToken();
 
   useEffect(() => {
-    if (!token) { 
-      router.push("/login"); 
-      return; 
+    if (!token) {
+      router.push("/login");
+      return;
     }
-    
+
     if (isNaN(id)) {
       setError("ID không hợp lệ");
       setLoading(false);
@@ -29,5 +29,13 @@ export function useAlert(id: number) {
       .finally(() => setLoading(false));
   }, [id, token, router]);
 
-  return { alert, loading, error };
+  const deleteAlert = useCallback(async () => {
+    if (!token) {
+      return;
+    }
+    await api.deleteAlert(id, token);
+    router.push("/alerts");
+  }, [id, token, router]);
+
+  return { alert, loading, error, deleteAlert };
 }

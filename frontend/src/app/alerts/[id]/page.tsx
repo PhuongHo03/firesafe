@@ -3,13 +3,13 @@
 import { useRouter, useParams } from "next/navigation";
 import { useAlert } from "@/hooks/useAlert";
 import Sidebar from "@/components/Sidebar";
-import { ArrowLeft, Flame, Camera, Clock, Tag } from "lucide-react";
+import { ArrowLeft, Flame, Camera, Clock, Tag, Trash2 } from "lucide-react";
 
 export default function AlertDetailPage() {
   const router = useRouter();
   const params = useParams();
   const id = Number(params.id);
-  const { alert, loading, error } = useAlert(id);
+  const { alert, loading, error, deleteAlert } = useAlert(id);
 
   return (
     <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
@@ -35,9 +35,21 @@ export default function AlertDetailPage() {
 
         {alert && (
           <div style={{ display: "grid", gap: "1.5rem", maxWidth: "900px" }}>
-            <h1 style={{ margin: 0, fontSize: "1.4rem", fontWeight: 700, display: "flex", alignItems: "center", gap: "0.5rem" }}>
-              <Flame size={20} color="var(--accent)" /> Cảnh báo #{alert.id}
-            </h1>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem" }}>
+              <h1 style={{ margin: 0, fontSize: "1.4rem", fontWeight: 700, display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <Flame size={20} color="var(--accent)" /> Cảnh báo #{alert.id}
+              </h1>
+              <button
+                onClick={() => {
+                  if (confirm(`Xóa cảnh báo #${alert.id}?`)) {
+                    deleteAlert();
+                  }
+                }}
+                style={deleteBtn}
+              >
+                <Trash2 size={14} /> Xóa
+              </button>
+            </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
               {/* Image */}
@@ -89,6 +101,19 @@ export default function AlertDetailPage() {
     </div>
   );
 }
+
+const deleteBtn: React.CSSProperties = {
+  background: "var(--accent-dim)",
+  border: "1px solid var(--accent)",
+  borderRadius: "0.4rem",
+  color: "var(--accent)",
+  cursor: "pointer",
+  display: "flex",
+  alignItems: "center",
+  gap: "0.35rem",
+  padding: "0.45rem 0.8rem",
+  fontSize: "0.85rem",
+};
 
 function InfoRow({ icon, label, value, color }: { icon: React.ReactNode; label: string; value: string; color?: string }) {
   return (

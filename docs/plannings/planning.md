@@ -9,23 +9,36 @@
 
 | | |
 |---|---|
-| **Giai đoạn đang thực hiện** | 🔄 Giai đoạn 6 — Phát triển & Tối ưu AI Model |
-| **Giai đoạn tiếp theo** | ⏳ Giai đoạn 7 — Giám sát Hệ thống |
+| **Giai đoạn đang thực hiện** | 🔄 Giai đoạn 7 — Giám sát Hệ thống |
+| **Giai đoạn tiếp theo** | ⏳ Giai đoạn 8 — Containerization & Shadow Testing |
 | **Workspace root** | project root |
 
-## 🔜 Việc tiếp theo cần làm (Giai đoạn 6)
+## 🔜 Việc tiếp theo cần làm (Giai đoạn 7)
+
+- [x] Khởi tạo `monitoring-service/` scrape/aggregate metrics riêng cho Dashboard UI
+- [x] Backend export metrics nhẹ qua `/actuator/prometheus` và `/api/v1/metrics/export`
+- [x] AI Worker export Prometheus text metrics qua `/metrics`
+- [x] Runtime manager start/stop monitoring-service, cấp `MONITORING_PORT`, ghi `NEXT_PUBLIC_MONITORING_URL`
+- [x] Dashboard UI hiển thị CPU/GPU/RAM/disk/API/Redis/RabbitMQ/MinIO/alerts/AI Worker metrics
+- [ ] Runtime smoke test `setup.ps1 up` và mở `/api/dashboard/metrics` + `/`
+
+## ✅ Việc đã hoàn thành (Giai đoạn 6)
 
 - [x] Khởi tạo `ai-worker/` với YOLO video detection MVP
 - [x] Tải model `.pt` vào `ai-worker/models/`
 - [x] Chạy thử với video local và kiểm tra output bounding box
 - [x] Mở rộng AI Worker thành module nhỏ + hỗ trợ upload MinIO + `POST /api/v1/alerts`
-- [x] Thêm runtime manager `setup.ps1` (Windows) và `setup.sh` (Linux) để quản lý runtime local, tự chọn port trống, cấp port infra từ dải `7001+`, logs và `.runtime/ports.env`; `up` tự chuẩn bị deps/env, `down` chỉ dừng runtime đã xác thực PID metadata và xóa `.runtime/`, `clean` xóa thêm generated artifacts + Docker volume/orphan thuộc compose project, không xóa shared images
+- [x] Thêm runtime manager `setup.ps1` (Windows) và `setup.sh` (Linux) để quản lý runtime local, tự chọn port trống, cấp port infra từ dải `7001+`, logs capped 50 dòng cuối/file và `.runtime/ports.env`; `up` tự chuẩn bị deps/env, `down` chỉ dừng runtime đã xác thực PID metadata và xóa `.runtime/`, `clean` xóa thêm generated artifacts + Docker volume/orphan thuộc compose project, không xóa shared images
 - [x] Chạy E2E thật với AI Worker service, backend, MinIO, Redis, RabbitMQ
 - [x] Mở rộng sang RTSP camera preview + detect realtime trên UI `/cameras`
 - [x] Tách CLI video local sang `video-detect/`, không backend/MinIO/auth/alert
 - [x] AI Worker chạy song song preview thread + detect thread để stream không bị YOLO chặn
-- [ ] Tune confidence/model runtime cho camera thật
-- [ ] Bổ sung metrics/monitoring cho AI Worker ở Giai đoạn 7
+- [x] AI Worker chia sẻ một RTSP capture cho nhiều camera dùng cùng `rtspUrl`, tránh mở trùng session vào camera/NVR
+- [x] AI Worker tự fallback Hikvision mainstream `*01` sang substream `*02` khi mở RTSP fail, giúp nhiều channel chạy song song nhẹ hơn
+- [x] AI Worker preview MJPEG luôn cập nhật frame mới, bbox realtime-ish theo TTL, alert theo sustained detection + camera/zone cooldown
+- [x] Tune confidence/model runtime cho camera thật
+- [x] Bắt đầu Giai đoạn 7 với monitoring trực tiếp trên Dashboard UI: backend summary, alert/camera metrics, AI Worker runtime status
+- [ ] Bổ sung metrics sâu hơn nếu cần: FPS/latency trung bình, GPU/VRAM khi có phần cứng phù hợp
 
 ## ✅ Checklist bắt buộc SAU MỖI TASK
 
@@ -99,7 +112,8 @@ project-root/
 │   │   └── planning.md                    ← File này
 │   └── explanations/
 │       ├── backend-explanation.md         ← Giải thích toàn bộ backend/
-│       ├── infrastructure-explanation.md  ← Giải thích docker-compose.dev.yml
+│       ├── infrastructure-explanation.md  ← Giải thích docker-compose.dev.yml + runtime manager
+│       ├── monitoring-service-explanation.md ← Giải thích monitoring-service/
 │       ├── mock-worker-explanation.md     ← Giải thích mock-worker/
 │       ├── frontend-explanation.md        ← Giải thích frontend/ (Next.js)
 │       ├── ai-worker-explanation.md       ← Giải thích ai-worker/ RTSP preview + YOLO detect realtime
@@ -121,7 +135,7 @@ project-root/
 │   └── run-mock-worker.sh
 │
 ├── ai-worker/                             ← YOLO RTSP service chính (host process)
-│   ├── service.py                         ← HTTP API: start/stop/status/MJPEG stream
+│   ├── service.py                         ← HTTP API: start/stop/status/MJPEG stream/metrics
 │   ├── requirements.txt
 │   ├── src/
 │   │   ├── camera_worker.py               ← RTSP reader thread + YOLO detector thread
@@ -130,6 +144,10 @@ project-root/
 │   │   ├── snapshot.py                    ← Encode frame PNG
 │   │   └── config.py                      ← Model path config
 │   └── models/                            ← Đặt wildfire-smoke-fire.pt hoặc best.pt sau khi tải model
+│
+├── monitoring-service/                    ← Scrape/aggregate metrics cho Dashboard UI
+│   ├── service.py
+│   └── requirements.txt
 │
 ├── video-detect/                          ← CLI debug video/image offline, tách khỏi AI Worker service
 │   ├── detect_video.py
@@ -142,8 +160,9 @@ project-root/
 │
 ├── frontend/                              ← Next.js 16 (TypeScript, Tailwind)
 │   ├── src/app/
-│   │   ├── page.tsx                       ← Dashboard (danh sách alert)
+│   │   ├── page.tsx                       ← Dashboard tổng quan (cards + 5 alert mới nhất)
 │   │   ├── login/page.tsx                 ← Trang đăng nhập
+│   │   ├── alerts/page.tsx                ← Danh sách alert đầy đủ + xóa từng alert/xóa tất cả
 │   │   ├── alerts/[id]/page.tsx           ← Chi tiết alert
 │   │   └── cameras/page.tsx              ← Quản lý camera
 │   ├── src/components/
@@ -155,10 +174,10 @@ project-root/
 │   ├── src/lib/
 │   │   ├── api.ts                         ← API client + types
 │   │   └── auth.ts                        ← JWT cookie helpers
-│   └── .env.local                         ← Auto-generated: NEXT_PUBLIC_API_URL + NEXT_PUBLIC_AI_WORKER_URL
+│   └── .env.local                         ← Auto-generated: NEXT_PUBLIC_API_URL + NEXT_PUBLIC_AI_WORKER_URL + NEXT_PUBLIC_MONITORING_URL
 │
-├── setup.ps1                              ← Runtime manager Windows: up/down/clean infra + backend + frontend + AI Worker
-├── setup.sh                               ← Runtime manager Linux: up/down/clean infra + backend + frontend + AI Worker
+├── setup.ps1                              ← Runtime manager Windows: up/down/clean infra + backend + frontend + AI Worker + monitoring-service
+├── setup.sh                               ← Runtime manager Linux: up/down/clean infra + backend + frontend + AI Worker + monitoring-service
 └── docker-compose.dev.yml                 ← 6 service: MariaDB, Redis, RabbitMQ,
                                              MinIO, Adminer, RedisInsight
 ```
@@ -238,6 +257,8 @@ cat .runtime/ports.env
 | `POST` | `/api/v1/alerts` | JWT Bearer | AI Worker gửi cảnh báo mới |
 | `GET` | `/api/v1/alerts` | JWT Bearer | Danh sách cảnh báo (phân trang) |
 | `GET` | `/api/v1/alerts/{id}` | JWT Bearer | Chi tiết một cảnh báo |
+| `DELETE` | `/api/v1/alerts` | JWT + ADMIN | Xóa tất cả cảnh báo, cleanup MinIO snapshot và Redis debounce |
+| `DELETE` | `/api/v1/alerts/{id}` | JWT + ADMIN | Xóa một cảnh báo, cleanup MinIO snapshot và Redis debounce nếu key còn trỏ tới alert đó |
 | `GET` | `/api/v1/cameras` | JWT Bearer | Danh sách camera |
 | `POST` | `/api/v1/cameras` | JWT + ADMIN | Thêm camera mới |
 | `PUT` | `/api/v1/cameras/{id}` | JWT + ADMIN | Cập nhật thông tin camera |
@@ -335,8 +356,9 @@ cat .runtime/ports.env
 - Fix lỗi SSR Hydration mismatch bằng `useEffect` trong `Sidebar`.
 - Thêm `spring-boot-devtools` cho Backend auto-reload.
 - **Trang Login** (`/login`) — form đăng nhập, lưu JWT, redirect về dashboard
-- **Dashboard** (`/`) — bảng alert phân trang, auto-refresh 30s, click vào detail
-- **Alert Detail** (`/alerts/[id]`) — ảnh hiện trường, thông tin đầy đủ
+- **Dashboard** (`/`) — monitoring tổng quan: backend status, alert/camera metrics, AI Worker runtime, 5 alert mới nhất
+- **Alerts** (`/alerts`) — danh sách alert đầy đủ, phân trang, xóa từng alert/xóa tất cả
+- **Alert Detail** (`/alerts/[id]`) — ảnh hiện trường, thông tin đầy đủ, xóa alert hiện tại
 - **Cameras** (`/cameras`) — card grid camera, thêm/xóa (chỉ ADMIN)
 - **Sidebar** — navigation chung, logout, hiển thị username/role
 - `frontend/.env.local` — được runtime manager `up` tự tạo từ port runtime: `NEXT_PUBLIC_API_URL` và `NEXT_PUBLIC_AI_WORKER_URL`
@@ -362,7 +384,7 @@ npm run dev   # http://localhost:3000
 - Tách `video-detect/` thành CLI debug video/image offline riêng, chỉ dùng `--source`, `--model`, `--conf`, `--show`, `--save`.
 - Giữ `ai-worker/` là HTTP service chính cho RTSP preview, detect realtime và gửi alert; Python service tự fallback model `wildfire-smoke-fire.pt` → `best.pt` nếu không truyền `--model`.
 - Tách AI Worker service thành các module: `config.py`, `camera_worker.py`, `detector.py`, `snapshot.py`, `storage.py`, `backend_client.py`.
-- `camera_worker.py` hiện tách 2 thread: RTSP reader cập nhật MJPEG preview liên tục, YOLO detector lấy frame mới nhất theo interval để detect/alert.
+- `camera_worker.py` hiện tách shared RTSP reader cập nhật MJPEG preview liên tục và YOLO detector lấy frame mới nhất theo interval để detect/alert; nhiều camera dùng cùng `rtspUrl` sẽ reuse một capture, Hikvision mainstream `*01` fail thì fallback substream `*02`.
 - Thêm guard chống spam camera: bấm Start nhiều lần không tạo thêm RTSP session; reconnect backoff 5s → 10s → 20s → 30s.
 - Thêm backend `PresetCameraSeeder` đọc `backend/.env.local` để seed camera RTSP làm sẵn khi `FIRESAFE_PRESET_CAMERA_RTSP_URL` khác rỗng; bỏ seed camera fake `Camera-Test-01`.
 - Thêm dependencies service `ultralytics`, `opencv-python`, `requests`, `minio`.
@@ -396,6 +418,8 @@ npm run dev   # http://localhost:3000
 - [x] Preview MJPEG realtime trên UI `/cameras`.
 - [x] Start/Stop detect theo từng camera từ UI.
 - [x] Tách preview thread khỏi detect thread để stream không bị YOLO chặn.
+- [x] Chia sẻ một RTSP capture cho nhiều camera dùng cùng `rtspUrl`, tránh mở trùng session vào camera/NVR.
+- [x] Fallback Hikvision mainstream `*01` sang substream `*02` khi mở RTSP fail để nhiều channel chạy song song nhẹ hơn.
 - [x] Upload snapshot MinIO + POST alert backend khi detect fire/smoke.
 - [x] Chống spam reconnect/start để tránh camera block.
 - [ ] Tune `--conf`, detection interval, resolution/FPS theo camera thật.
@@ -408,23 +432,27 @@ npm run dev   # http://localhost:3000
 
 ---
 
-### ⏳ Giai đoạn 7 — Giám sát Hệ thống *(Tuần 14)*
+### 🔄 Giai đoạn 7 — Giám sát Hệ thống *(Tuần 14)*
 
-> **Trạng thái: CHƯA BẮT ĐẦU**
+> **Trạng thái: ĐANG THỰC HIỆN**
+> **Context cho session mới:** Đọc [`docs/explanations/monitoring-service-explanation.md`](../explanations/monitoring-service-explanation.md), [`frontend-explanation.md`](../explanations/frontend-explanation.md), [`backend-explanation.md`](../explanations/backend-explanation.md), [`ai-worker-explanation.md`](../explanations/ai-worker-explanation.md).
 
-**Mục tiêu:** Hệ thống "sống" 24/7 và tự báo cáo "sức khỏe".
+**Mục tiêu:** Hệ thống "sống" 24/7 và tự báo cáo "sức khỏe" trên Dashboard UI, không cần Grafana cho local MVP.
 
 #### Thu thập Metrics
-- **Backend:** Actuator + Micrometer → `/actuator/prometheus` (đã cấu hình sẵn)
-- **AI Worker:** HTTP endpoint Python → GPU temp, VRAM, FPS, RTSP status
-- **Nginx:** `nginx-prometheus-exporter`
+- **Monitoring service:** `monitoring-service/` scrape/aggregate metrics từ Backend, AI Worker, Redis, RabbitMQ, MinIO và host system; trả `GET /api/dashboard/metrics` cho UI.
+- **Backend:** `/actuator/prometheus` export JVM/API metrics; `GET /api/v1/metrics/export` export business metrics nhẹ: alert totals, hourly/byLabel, camera total/active.
+- **AI Worker:** `GET /metrics` export Prometheus text: workers/sources/camera running/hasFrame/error, detections, alerts sent, inference avg.
+- **Frontend Dashboard:** `/` đọc `NEXT_PUBLIC_MONITORING_URL`, hiển thị cards CPU/GPU/RAM/disk/API/infra/alerts và charts alert theo giờ/label.
+- **Grafana/Prometheus container:** không dùng trong local MVP; defer cho production nếu cần dashboard ngoài app.
 
-#### Grafana Dashboards
-- Alert rate theo thời gian (per camera)
-- FPS model theo từng AI Worker
-- Queue depth RabbitMQ
-- Uptime của từng service
-- GPU VRAM & nhiệt độ
+#### Dashboard UI Monitoring
+- Backend UP/DOWN, requests total, avg latency, error rate, uptime.
+- System: CPU, GPU nếu có NVIDIA, RAM, disk.
+- Infra: Redis memory/keys, RabbitMQ messages/consumers, MinIO object count/bytes.
+- Alert count: total, NEW, last 24h, high confidence last 24h, hourly chart, by-label chart.
+- AI Worker: UP/DOWN, số workers/sources, trạng thái/counters từng camera đang detect.
+- 5 alert mới nhất để xem nhanh; quản lý đầy đủ ở `/alerts`.
 
 ---
 

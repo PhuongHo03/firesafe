@@ -3,7 +3,7 @@ import { useRouter } from "next/navigation";
 import { api, Alert } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 
-export function useAlerts() {
+export function useAlerts(pageSize = 15) {
   const router = useRouter();
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [total, setTotal] = useState(0);
@@ -20,7 +20,7 @@ export function useAlerts() {
     }
     setLoading(true);
     try {
-      const data = await api.getAlerts(p, 15, token);
+      const data = await api.getAlerts(p, pageSize, token);
       setAlerts(data.content);
       setTotal(data.totalElements);
       setTotalPages(data.totalPages);
@@ -30,7 +30,7 @@ export function useAlerts() {
     } finally {
       setLoading(false);
     }
-  }, [token, router]);
+  }, [token, pageSize]);
 
   useEffect(() => {
     const currentToken = getToken();
@@ -54,6 +54,31 @@ export function useAlerts() {
     return () => clearInterval(id);
   }, [page, load]);
 
+  const deleteAlert = useCallback(async (id: number) => {
+    if (!token) {
+      return;
+    }
+    try {
+      await api.deleteAlert(id, token);
+      await load(page);
+    } catch {
+      setError("Không thể xoá cảnh báo");
+    }
+  }, [token, page, load]);
+
+  const deleteAllAlerts = useCallback(async () => {
+    if (!token) {
+      return;
+    }
+    try {
+      await api.deleteAllAlerts(token);
+      setPage(0);
+      await load(0);
+    } catch {
+      setError("Không thể xoá tất cả cảnh báo");
+    }
+  }, [token, load]);
+
   return {
     alerts,
     total,
@@ -64,5 +89,7 @@ export function useAlerts() {
     error,
     refreshing,
     reload: () => load(page),
+    deleteAlert,
+    deleteAllAlerts,
   };
 }

@@ -62,6 +62,7 @@ public class SecurityConfig {
                 .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/swagger-ui.html").permitAll()
                 .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                 .requestMatchers("/actuator/prometheus").permitAll()
+                .requestMatchers("/api/v1/metrics/export").permitAll()
                 // Camera management: only ADMIN can create/update/delete
                 .requestMatchers(HttpMethod.GET, "/api/v1/cameras/**").hasAnyRole("ADMIN", "OPERATOR", "VIEWER")
                 .requestMatchers(HttpMethod.POST, "/api/v1/cameras/**").hasRole("ADMIN")
