@@ -64,7 +64,7 @@ public class SecurityConfig {
                 .requestMatchers("/actuator/prometheus").permitAll()
                 .requestMatchers("/api/v1/metrics/export").permitAll()
                 // Camera management: only ADMIN can create/update/delete
-                .requestMatchers(HttpMethod.GET, "/api/v1/cameras/**").hasAnyRole("ADMIN", "OPERATOR", "VIEWER")
+                .requestMatchers(HttpMethod.GET, "/api/v1/cameras/**").hasAnyRole("ADMIN", "VIEWER")
                 .requestMatchers(HttpMethod.POST, "/api/v1/cameras/**").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.PUT, "/api/v1/cameras/**").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.DELETE, "/api/v1/cameras/**").hasRole("ADMIN")

@@ -273,14 +273,14 @@ Tạo toàn bộ 5 bảng và các index tối ưu query:
 
 | Bảng | Mục đích |
 |---|---|
-| `roles` | Lưu các role: ROLE_ADMIN, ROLE_OPERATOR, ROLE_VIEWER |
+| `roles` | Lưu 2 role: ROLE_ADMIN, ROLE_VIEWER |
 | `users` | Tài khoản người dùng hệ thống |
 | `user_roles` | Bảng trung gian many-to-many User ↔ Role |
 | `cameras` | Thông tin camera IP (RTSP URL, vị trí lắp đặt) |
 | `alerts` | Lịch sử sự kiện phát hiện lửa/khói |
 
 #### `V2__seed_data.sql`
-Chèn dữ liệu ban đầu: 3 roles và 1 admin user (password: `admin123` — BCrypt hashed).
+Chèn dữ liệu ban đầu: 2 roles (`ROLE_ADMIN`, `ROLE_VIEWER`) và 1 admin user (password: `admin123` — BCrypt hashed).
 
 ---
 
@@ -289,7 +289,7 @@ Chèn dữ liệu ban đầu: 3 roles và 1 admin user (password: `admin123` —
 **Vai trò:** Mỗi class ánh xạ trực tiếp với một bảng trong database. Hibernate đọc JPA annotation để sinh SQL tương ứng.
 
 #### `Role.java` → bảng `roles`
-Chứa tên role dạng chuỗi. Spring Security yêu cầu prefix `ROLE_` (`ROLE_ADMIN`, `ROLE_OPERATOR`, `ROLE_VIEWER`).
+Chứa tên role dạng chuỗi. Spring Security yêu cầu prefix `ROLE_`; hệ thống hiện chỉ dùng `ROLE_ADMIN` và `ROLE_VIEWER`.
 
 #### `User.java` → bảng `users`
 ```java
@@ -341,8 +341,9 @@ Page<Alert> findByCameraIdOrderByDetectedAtDesc(Long cameraId, Pageable pageable
 
 | DTO | Hướng | Nội dung |
 |---|---|---|
-| `LoginRequest` | Client → Server | `{username, password}` |
-| `LoginResponse` | Server → Client | `{token, username, roles[]}` |
+| `LoginRequest` | Client → Server | `{email, password}` |
+| `LoginResponse` | Server → Client | `{token, username, email, roles[]}` |
+| `RegisterRequest` | Client → Server | `{username, email, password}` — username là tên hiển thị UI |
 | `AlertRequest` | AI Worker → Server | Payload khi fire/smoke duy trì đủ ngưỡng và hết cooldown camera/zone |
 | `AlertResponse` | Server → Client | Alert kèm `cameraName` |
 | `CameraRequest` | Client → Server | Tạo/cập nhật camera |
@@ -435,12 +436,34 @@ loadUserByUsername("admin")
 
 **Vai trò:** Nhận HTTP request, validate input, gọi Service, trả HTTP response. **Không chứa business logic.**
 
-#### `AuthController` — `POST /api/v1/auth/login`
-```
-LoginRequest → AuthenticationManager.authenticate()
-             → BCrypt.verify(password, hash)
+#### `AuthController` — auth endpoints
+
+| Endpoint | Method | Mô tả |
+|---|---|---|
+| `/api/v1/auth/login` | POST | Đăng nhập bằng email `@nhattienchung.vn` + password, trả JWT |
+| `/api/v1/auth/register` | POST | Đăng ký tài khoản viewer pending activation với tên hiển thị tự chọn + email `@nhattienchung.vn`; không trả JWT active |
+
+Luồng login:
+```text
+LoginRequest(email,password) → AuthService.login()
+             → enforce @nhattienchung.vn
+             → AuthenticationManager.authenticate()
              → JwtUtils.generateToken()
              → LoginResponse {token, username, roles}
+```
+
+Luồng register:
+```text
+RegisterRequest(username,email,password)
+  → trim username làm tên hiển thị UI
+  → normalize email lower-case
+  → enforce @nhattienchung.vn
+  → reject duplicate email
+  → reject duplicate username
+  → encode password bằng BCrypt
+  → assign ROLE_VIEWER
+  → set isActive=false
+  → Admin kích hoạt trong /api/v1/users trước khi user login được
 ```
 
 #### `AlertController`
@@ -454,6 +477,8 @@ LoginRequest → AuthenticationManager.authenticate()
 | `/api/v1/alerts/{id}` | DELETE | Xóa một alert (ADMIN), cleanup MinIO snapshot và Redis debounce nếu key còn trỏ tới alert đó |
 | `/api/v1/monitoring/summary` | GET | Monitoring summary cũ cho Dashboard: backend status, alert totals/24h/high-confidence, camera total/active |
 | `/api/v1/metrics/export` | GET | Export business metrics nhẹ cho monitoring-service: alert totals, hourly/byLabel, camera total/active |
+| `/api/v1/users` | GET | ADMIN list users để kích hoạt/chỉnh role |
+| `/api/v1/users/{id}` | PUT | ADMIN update `active` và role (`ROLE_ADMIN` hoặc `ROLE_VIEWER`) |
 
 #### `CameraController`
 
@@ -471,8 +496,8 @@ LoginRequest → AuthenticationManager.authenticate()
 
 #### `SecurityConfig.java`
 Định nghĩa rules bảo mật:
-- `/api/v1/auth/**`, `/swagger-ui/**`, `/v3/api-docs/**`, `/swagger-ui.html`, `/actuator/health`, `/actuator/info`, `/actuator/prometheus` → **PUBLIC**
-- `GET /api/v1/cameras/**` → Mọi role có token
+- `/api/v1/auth/**` gồm login/register, `/swagger-ui/**`, `/v3/api-docs/**`, `/swagger-ui.html`, `/actuator/health`, `/actuator/info`, `/actuator/prometheus` → **PUBLIC**
+- `GET /api/v1/cameras/**` → ADMIN hoặc VIEWER
 - `POST/PUT/DELETE /api/v1/cameras/**` → Chỉ ADMIN
 - Tất cả còn lại → Cần token
 - Session: `STATELESS` (không dùng session — JWT là stateless)
@@ -548,4 +573,4 @@ Bắt exception từ bất kỳ đâu → chuyển thành HTTP response chuẩn 
 
 ---
 
-*Tài liệu phản ánh trạng thái backend tại **Giai đoạn 7**. Backend đã hỗ trợ preset RTSP camera từ env, alert ingestion từ AI Worker, Redis debounce, RabbitMQ notification, MinIO snapshot URLs và metrics export nhẹ cho monitoring-service.*
+*Tài liệu phản ánh trạng thái backend tại **Giai đoạn 7**. Backend đã hỗ trợ login/register viewer-pending-activation với email `@nhattienchung.vn`, RBAC `ADMIN/VIEWER`, admin user activation/role editing, preset RTSP camera từ env, alert ingestion từ AI Worker, Redis debounce, RabbitMQ notification, MinIO snapshot URLs và metrics export nhẹ cho monitoring-service.*

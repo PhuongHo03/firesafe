@@ -19,7 +19,7 @@
 - [x] Backend export metrics nhẹ qua `/actuator/prometheus` và `/api/v1/metrics/export`
 - [x] AI Worker export Prometheus text metrics qua `/metrics`
 - [x] Runtime manager start/stop monitoring-service, cấp `MONITORING_PORT`, ghi `NEXT_PUBLIC_MONITORING_URL`
-- [x] Dashboard UI hiển thị CPU/GPU/RAM/disk/API/Redis/RabbitMQ/MinIO/alerts/AI Worker metrics
+- [x] Dashboard UI hiển thị CPU/GPU/RAM/disk/API/Redis/RabbitMQ/MinIO/alerts/AI Worker metrics; CPU/RAM/Disk lấy từ máy thật host qua `psutil`, GPU qua `nvidia-smi` nếu có
 - [ ] Runtime smoke test `setup.ps1 up` và mở `/api/dashboard/metrics` + `/`
 
 ## ✅ Việc đã hoàn thành (Giai đoạn 6)
@@ -246,14 +246,15 @@ cat .runtime/ports.env
 | `cameras` | `id`, `name`, `rtsp_url`, `location`, `is_active`, `created_at` |
 | `alerts` | `id`, `camera_id`, `detected_at`, `confidence`, `label`, `image_url`, `status` |
 | `users` | `id`, `username`, `password_hash`, `email`, `is_active` |
-| `roles` | `id`, `name` (`ROLE_ADMIN`, `ROLE_OPERATOR`, `ROLE_VIEWER`) |
+| `roles` | `id`, `name` (`ROLE_ADMIN`, `ROLE_VIEWER`) |
 | `user_roles` | `user_id`, `role_id` |
 
 #### Định nghĩa API Contract
 
 | Method | Endpoint | Auth | Mô tả |
 |---|---|---|---|
-| `POST` | `/api/v1/auth/login` | — | Lấy JWT token |
+| `POST` | `/api/v1/auth/login` | — | Đăng nhập bằng email `@nhattienchung.vn` + password để lấy JWT token |
+| `POST` | `/api/v1/auth/register` | — | Đăng ký viewer pending bằng email `@nhattienchung.vn`; cần Admin kích hoạt trước khi login |
 | `POST` | `/api/v1/alerts` | JWT Bearer | AI Worker gửi cảnh báo mới |
 | `GET` | `/api/v1/alerts` | JWT Bearer | Danh sách cảnh báo (phân trang) |
 | `GET` | `/api/v1/alerts/{id}` | JWT Bearer | Chi tiết một cảnh báo |
@@ -356,6 +357,7 @@ cat .runtime/ports.env
 - Fix lỗi SSR Hydration mismatch bằng `useEffect` trong `Sidebar`.
 - Thêm `spring-boot-devtools` cho Backend auto-reload.
 - **Trang Login** (`/login`) — form đăng nhập, lưu JWT, redirect về dashboard
+- **Trang Register** (`/register`) — đăng ký viewer pending bằng email `@nhattienchung.vn`, chờ Admin kích hoạt trước khi login
 - **Dashboard** (`/`) — monitoring tổng quan: backend status, alert/camera metrics, AI Worker runtime, 5 alert mới nhất
 - **Alerts** (`/alerts`) — danh sách alert đầy đủ, phân trang, xóa từng alert/xóa tất cả
 - **Alert Detail** (`/alerts/[id]`) — ảnh hiện trường, thông tin đầy đủ, xóa alert hiện tại

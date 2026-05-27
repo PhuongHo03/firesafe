@@ -1,14 +1,12 @@
 import argparse
 import json
 import os
-import platform
-import shutil
 import subprocess
-import time
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 
+import psutil
 import requests
 from minio import Minio
 from redis import Redis
@@ -182,13 +180,14 @@ class MonitoringServer(ThreadingHTTPServer):
             return {"status": "DOWN", "objectCount": 0, "bytes": 0, "error": str(exc)}
 
     def _system_metrics(self) -> dict:
-        total, used, free = shutil.disk_usage(os.getcwd())
+        memory = psutil.virtual_memory()
+        disk = psutil.disk_usage(system_root_path())
         return {
             "cpuPct": cpu_percent(),
-            "ramUsedBytes": memory_used_bytes(),
-            "ramTotalBytes": memory_total_bytes(),
-            "diskUsedBytes": used,
-            "diskTotalBytes": total,
+            "ramUsedBytes": memory.used,
+            "ramTotalBytes": memory.total,
+            "diskUsedBytes": disk.used,
+            "diskTotalBytes": disk.total,
             "gpu": gpu_metrics(),
         }
 
@@ -230,63 +229,12 @@ def metric_value(metrics: list[tuple[str, dict[str, str], float]], name: str) ->
 
 
 def cpu_percent() -> float:
-    if platform.system() == "Windows":
-        try:
-            output = subprocess.check_output(["wmic", "cpu", "get", "loadpercentage", "/value"], text=True, timeout=2)
-            for line in output.splitlines():
-                if line.startswith("LoadPercentage="):
-                    return float(line.split("=", 1)[1])
-        except Exception:
-            return 0.0
-    try:
-        load = os.getloadavg()[0]
-        cpu_count = os.cpu_count() or 1
-        return min(100.0, load / cpu_count * 100)
-    except Exception:
-        return 0.0
+    return psutil.cpu_percent(interval=0.1)
 
 
-def memory_total_bytes() -> int:
-    if platform.system() == "Windows":
-        try:
-            output = subprocess.check_output(["wmic", "OS", "get", "TotalVisibleMemorySize", "/value"], text=True, timeout=2)
-            for line in output.splitlines():
-                if line.startswith("TotalVisibleMemorySize="):
-                    return int(line.split("=", 1)[1]) * 1024
-        except Exception:
-            return 0
-    try:
-        with open("/proc/meminfo", encoding="utf-8") as handle:
-            for line in handle:
-                if line.startswith("MemTotal:"):
-                    return int(line.split()[1]) * 1024
-    except Exception:
-        return 0
-    return 0
-
-
-def memory_used_bytes() -> int:
-    if platform.system() == "Windows":
-        try:
-            output = subprocess.check_output(["wmic", "OS", "get", "FreePhysicalMemory", "/value"], text=True, timeout=2)
-            free_kb = 0
-            for line in output.splitlines():
-                if line.startswith("FreePhysicalMemory="):
-                    free_kb = int(line.split("=", 1)[1])
-                    break
-            total = memory_total_bytes()
-            return max(0, total - free_kb * 1024)
-        except Exception:
-            return 0
-    values = {}
-    try:
-        with open("/proc/meminfo", encoding="utf-8") as handle:
-            for line in handle:
-                key, value = line.split(":", 1)
-                values[key] = int(value.split()[0]) * 1024
-        return values.get("MemTotal", 0) - values.get("MemAvailable", 0)
-    except Exception:
-        return 0
+def system_root_path() -> str:
+    drive, _ = os.path.splitdrive(os.getcwd())
+    return f"{drive}\\" if drive else "/"
 
 
 def gpu_metrics() -> dict:

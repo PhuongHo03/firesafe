@@ -3,10 +3,14 @@ import { useRouter } from "next/navigation";
 import { api, Camera } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 
+const MIN_REFRESH_MS = 250;
+const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 export function useCameras() {
   const router = useRouter();
   const [cameras, setCameras] = useState<Camera[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [token, setToken] = useState<string>();
 
@@ -60,11 +64,22 @@ export function useCameras() {
     }
   };
 
+  const reload = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([loadCameras(), wait(MIN_REFRESH_MS)]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadCameras]);
+
   return {
     cameras,
     loading,
+    refreshing,
     error,
     setError,
+    reload,
     addCamera,
     deleteCamera,
   };

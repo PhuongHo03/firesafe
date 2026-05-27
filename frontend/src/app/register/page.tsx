@@ -1,35 +1,48 @@
 "use client";
 
-import { useState, FormEvent } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { FormEvent, useState } from "react";
 import { api } from "@/lib/api";
-import { saveAuth } from "@/lib/auth";
 import { Flame, Loader2 } from "lucide-react";
 
-export default function LoginPage() {
-  const router = useRouter();
+const ALLOWED_DOMAIN = "@nhattienchung.vn";
+
+export default function RegisterPage() {
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError("");
+    const normalizedUsername = username.trim();
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedUsername) {
+      setError("Tên tài khoản không được để trống");
+      return;
+    }
+    if (!normalizedEmail.endsWith(ALLOWED_DOMAIN)) {
+      setError(`Email phải dùng tên miền ${ALLOWED_DOMAIN}`);
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError("Mật khẩu xác nhận không khớp");
+      return;
+    }
+
     setLoading(true);
     try {
-      const normalizedEmail = email.trim().toLowerCase();
-      if (!normalizedEmail.endsWith("@nhattienchung.vn")) {
-        setError("Email phải dùng tên miền @nhattienchung.vn");
-        setLoading(false);
-        return;
-      }
-      const data = await api.login(normalizedEmail, password);
-      saveAuth(data);
-      router.push("/");
+      await api.register(normalizedUsername, normalizedEmail, password);
+      setSuccess(true);
+      setUsername("");
+      setPassword("");
+      setConfirmPassword("");
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Đăng nhập thất bại");
+      setError(err instanceof Error ? err.message : "Đăng ký thất bại");
     } finally {
       setLoading(false);
     }
@@ -50,10 +63,9 @@ export default function LoginPage() {
         borderRadius: "1rem",
         padding: "2.5rem",
         width: "100%",
-        maxWidth: "400px",
+        maxWidth: "420px",
         boxShadow: "0 25px 50px rgba(0,0,0,0.5)",
       }}>
-        {/* Logo */}
         <div style={{ textAlign: "center", marginBottom: "2rem" }}>
           <div style={{
             display: "inline-flex",
@@ -68,19 +80,31 @@ export default function LoginPage() {
             <Flame size={32} color="var(--accent)" />
           </div>
           <h1 style={{ margin: 0, fontSize: "1.5rem", fontWeight: 700, color: "var(--text)" }}>
-            FireSafe
+            Tạo tài khoản
           </h1>
           <p style={{ margin: "0.25rem 0 0", color: "var(--text-muted)", fontSize: "0.875rem" }}>
-            Hệ thống phát hiện cháy
+            Chỉ email {ALLOWED_DOMAIN} được đăng ký
           </p>
         </div>
 
-        {/* Form */}
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
           <div>
-            <label style={{ display: "block", fontSize: "0.875rem", color: "var(--text-muted)", marginBottom: "0.4rem" }}>
-              Email công ty
-            </label>
+            <label style={labelStyle}>Tên tài khoản</label>
+            <input
+              id="username"
+              type="text"
+              value={username}
+              onChange={e => setUsername(e.target.value)}
+              required
+              maxLength={100}
+              autoComplete="name"
+              style={inputStyle}
+              placeholder="Nguyễn Văn A"
+            />
+          </div>
+
+          <div>
+            <label style={labelStyle}>Email</label>
             <input
               id="email"
               type="email"
@@ -89,25 +113,52 @@ export default function LoginPage() {
               required
               autoComplete="email"
               style={inputStyle}
-              placeholder="admin@nhattienchung.vn"
+              placeholder={`user${ALLOWED_DOMAIN}`}
             />
           </div>
 
           <div>
-            <label style={{ display: "block", fontSize: "0.875rem", color: "var(--text-muted)", marginBottom: "0.4rem" }}>
-              Mật khẩu
-            </label>
+            <label style={labelStyle}>Mật khẩu</label>
             <input
               id="password"
               type="password"
               value={password}
               onChange={e => setPassword(e.target.value)}
               required
-              autoComplete="current-password"
+              minLength={6}
+              autoComplete="new-password"
               style={inputStyle}
               placeholder="••••••••"
             />
           </div>
+
+          <div>
+            <label style={labelStyle}>Xác nhận mật khẩu</label>
+            <input
+              id="confirm-password"
+              type="password"
+              value={confirmPassword}
+              onChange={e => setConfirmPassword(e.target.value)}
+              required
+              minLength={6}
+              autoComplete="new-password"
+              style={inputStyle}
+              placeholder="••••••••"
+            />
+          </div>
+
+          {success && (
+            <div style={{
+              background: "rgba(34, 197, 94, 0.12)",
+              border: "1px solid var(--green)",
+              borderRadius: "0.5rem",
+              padding: "0.75rem 1rem",
+              fontSize: "0.875rem",
+              color: "var(--green)",
+            }}>
+              Đăng ký tài khoản thành công! Vui lòng chờ Ban quản trị kích hoạt tài khoản của bạn trước khi đăng nhập.
+            </div>
+          )}
 
           {error && (
             <div style={{
@@ -123,7 +174,7 @@ export default function LoginPage() {
           )}
 
           <button
-            id="login-submit"
+            id="register-submit"
             type="submit"
             disabled={loading}
             style={{
@@ -144,12 +195,12 @@ export default function LoginPage() {
             }}
           >
             {loading && <Loader2 size={18} style={{ animation: "spin 1s linear infinite" }} />}
-            {loading ? "Đang đăng nhập..." : "Đăng nhập"}
+            {loading ? "Đang đăng ký..." : "Đăng ký"}
           </button>
         </form>
 
         <p style={{ margin: "1rem 0 0", textAlign: "center", color: "var(--text-muted)", fontSize: "0.875rem" }}>
-          Chưa có tài khoản? <Link href="/register" style={{ color: "var(--accent)", fontWeight: 600 }}>Đăng ký tài khoản</Link>
+          Đã có tài khoản? <Link href="/login" style={{ color: "var(--accent)", fontWeight: 600 }}>Đăng nhập</Link>
         </p>
       </div>
 
@@ -157,6 +208,13 @@ export default function LoginPage() {
     </div>
   );
 }
+
+const labelStyle: React.CSSProperties = {
+  display: "block",
+  fontSize: "0.875rem",
+  color: "var(--text-muted)",
+  marginBottom: "0.4rem",
+};
 
 const inputStyle: React.CSSProperties = {
   width: "100%",

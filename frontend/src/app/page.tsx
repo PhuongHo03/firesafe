@@ -8,6 +8,7 @@ import { AlertTriangle, BarChart3, Camera, CheckCircle, Cpu, Database, Flame, Ga
 
 const CONFIDENCE_COLOR = (c: number) =>
   c >= 0.9 ? "var(--accent)" : c >= 0.75 ? "var(--yellow)" : "var(--green)";
+const formatDateTime = (value: string) => new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "medium", timeZone: "Asia/Ho_Chi_Minh" }).format(new Date(value));
 
 function Badge({ label }: { label: string }) {
   const color = label === "fire" ? "var(--accent)" : "var(--yellow)";
@@ -60,9 +61,9 @@ export default function DashboardPage() {
 
         <div style={grid4}>
           <MetricCard icon={<Gauge size={18} />} label="CPU" value={`${(metrics?.system.cpuPct ?? 0).toFixed(0)}%`} percent={metrics?.system.cpuPct ?? 0} />
-          <MetricCard icon={<Database size={18} />} label="RAM" value={formatBytes(metrics?.system.ramUsedBytes ?? 0)} percent={percent(metrics?.system.ramUsedBytes ?? 0, metrics?.system.ramTotalBytes ?? 0)} />
-          <MetricCard icon={<HardDrive size={18} />} label="Disk" value={formatBytes(metrics?.system.diskUsedBytes ?? 0)} percent={percent(metrics?.system.diskUsedBytes ?? 0, metrics?.system.diskTotalBytes ?? 0)} />
-          <MetricCard icon={<Cpu size={18} />} label="GPU" value={metrics?.system.gpu.available ? `${metrics.system.gpu.utilPct}%` : "N/A"} percent={metrics?.system.gpu.available ? metrics.system.gpu.utilPct : 0} />
+          <MetricCard icon={<Database size={18} />} label="RAM" value={formatBytesPair(metrics?.system.ramUsedBytes ?? 0, metrics?.system.ramTotalBytes ?? 0)} percent={percent(metrics?.system.ramUsedBytes ?? 0, metrics?.system.ramTotalBytes ?? 0)} />
+          <MetricCard icon={<HardDrive size={18} />} label="Disk" value={formatBytesPair(metrics?.system.diskUsedBytes ?? 0, metrics?.system.diskTotalBytes ?? 0)} percent={percent(metrics?.system.diskUsedBytes ?? 0, metrics?.system.diskTotalBytes ?? 0)} />
+          <MetricCard icon={<Cpu size={18} />} label="GPU" value={metrics?.system.gpu.available ? `${metrics.system.gpu.utilPct}%` : "N/A"} percent={metrics?.system.gpu.available ? metrics.system.gpu.utilPct : 0} detail={metrics?.system.gpu.available ? formatBytesPair(metrics.system.gpu.memoryUsedBytes, metrics.system.gpu.memoryTotalBytes) : undefined} />
         </div>
 
         <div style={grid4}>
@@ -133,7 +134,7 @@ export default function DashboardPage() {
                   <td style={td}>{a.cameraName}</td>
                   <td style={td}><Badge label={a.label} /></td>
                   <td style={td}><span style={{ color: CONFIDENCE_COLOR(a.confidence), fontWeight: 600 }}>{(a.confidence * 100).toFixed(0)}%</span></td>
-                  <td style={td}><span style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>{new Date(a.detectedAt).toLocaleString("vi-VN")}</span></td>
+                  <td style={td}><span style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>{formatDateTime(a.detectedAt)}</span></td>
                   <td style={td}>{a.status === "NEW" ? <span style={{ display: "flex", alignItems: "center", gap: "0.3rem", color: "var(--accent)", fontSize: "0.85rem" }}><AlertTriangle size={13} /> Mới</span> : <span style={{ display: "flex", alignItems: "center", gap: "0.3rem", color: "var(--green)", fontSize: "0.85rem" }}><CheckCircle size={13} /> Đã xử lý</span>}</td>
                 </tr>
               ))}
@@ -150,9 +151,9 @@ function SummaryCard({ icon, label, value, color, detail }: { icon: React.ReactN
   return <div style={cardStyle}><div style={{ display: "flex", alignItems: "center", gap: "0.4rem", color: color ?? "var(--text-muted)", fontSize: "0.8rem", marginBottom: "0.75rem" }}>{icon} {label}</div><div style={{ fontSize: "1.5rem", fontWeight: 700, color: color ?? "var(--text)" }}>{value}</div>{detail && <div style={{ marginTop: "0.35rem", color: "var(--text-muted)", fontSize: "0.78rem" }}>{detail}</div>}</div>;
 }
 
-function MetricCard({ icon, label, value, percent }: { icon: React.ReactNode; label: string; value: string; percent: number }) {
+function MetricCard({ icon, label, value, percent, detail }: { icon: React.ReactNode; label: string; value: string; percent: number; detail?: string }) {
   const safe = Math.max(0, Math.min(100, percent));
-  return <div style={cardStyle}><div style={{ display: "flex", alignItems: "center", gap: "0.4rem", color: "var(--text-muted)", fontSize: "0.8rem", marginBottom: "0.75rem" }}>{icon} {label}</div><div style={{ fontSize: "1.5rem", fontWeight: 700 }}>{value}</div><div style={{ height: 8, background: "var(--surface-2)", borderRadius: 999, overflow: "hidden", marginTop: "0.75rem" }}><div style={{ width: `${safe}%`, height: "100%", background: safe > 85 ? "var(--accent)" : safe > 65 ? "var(--yellow)" : "var(--green)" }} /></div></div>;
+  return <div style={cardStyle}><div style={{ display: "flex", alignItems: "center", gap: "0.4rem", color: "var(--text-muted)", fontSize: "0.8rem", marginBottom: "0.75rem" }}>{icon} {label}</div><div style={{ fontSize: "1.5rem", fontWeight: 700 }}>{value}</div>{detail && <div style={{ marginTop: "0.35rem", color: "var(--text-muted)", fontSize: "0.78rem" }}>{detail}</div>}<div style={{ height: 8, background: "var(--surface-2)", borderRadius: 999, overflow: "hidden", marginTop: "0.75rem" }}><div style={{ width: `${safe}%`, height: "100%", background: safe > 85 ? "var(--accent)" : safe > 65 ? "var(--yellow)" : "var(--green)" }} /></div></div>;
 }
 
 function ChartCard({ title, subtitle, data }: { title: string; subtitle: string; data: Array<{ label: string; value: number }> }) {
@@ -174,6 +175,10 @@ function formatBytes(value: number) {
     index += 1;
   }
   return `${size.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
+}
+
+function formatBytesPair(used: number, total: number) {
+  return `${formatBytes(used)} / ${formatBytes(total)}`;
 }
 
 function percent(used: number, total: number) {

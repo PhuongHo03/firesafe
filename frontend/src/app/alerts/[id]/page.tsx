@@ -1,15 +1,24 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useAlert } from "@/hooks/useAlert";
+import { isAdmin } from "@/lib/auth";
 import Sidebar from "@/components/Sidebar";
 import { ArrowLeft, Flame, Camera, Clock, Tag, Trash2 } from "lucide-react";
+
+const formatDateTime = (value: string) => new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "medium", timeZone: "Asia/Ho_Chi_Minh" }).format(new Date(value));
 
 export default function AlertDetailPage() {
   const router = useRouter();
   const params = useParams();
   const id = Number(params.id);
   const { alert, loading, error, deleteAlert } = useAlert(id);
+  const [admin, setAdmin] = useState(false);
+
+  useEffect(() => {
+    setAdmin(isAdmin());
+  }, []);
 
   return (
     <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
@@ -39,16 +48,18 @@ export default function AlertDetailPage() {
               <h1 style={{ margin: 0, fontSize: "1.4rem", fontWeight: 700, display: "flex", alignItems: "center", gap: "0.5rem" }}>
                 <Flame size={20} color="var(--accent)" /> Cảnh báo #{alert.id}
               </h1>
-              <button
-                onClick={() => {
-                  if (confirm(`Xóa cảnh báo #${alert.id}?`)) {
-                    deleteAlert();
-                  }
-                }}
-                style={deleteBtn}
-              >
-                <Trash2 size={14} /> Xóa
-              </button>
+              {admin && (
+                <button
+                  onClick={() => {
+                    if (confirm(`Xóa cảnh báo #${alert.id}?`)) {
+                      deleteAlert();
+                    }
+                  }}
+                  style={deleteBtn}
+                >
+                  <Trash2 size={14} /> Xóa
+                </button>
+              )}
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
@@ -66,7 +77,7 @@ export default function AlertDetailPage() {
                 <InfoRow icon={<Camera size={16} />} label="Camera" value={alert.cameraName} />
                 <InfoRow icon={<Tag size={16} />} label="Loại cảnh báo" value={alert.label.toUpperCase()} color="var(--accent)" />
                 <InfoRow icon={<Flame size={16} />} label="Độ tin cậy" value={`${(alert.confidence * 100).toFixed(1)}%`} color={alert.confidence >= 0.9 ? "var(--accent)" : "var(--yellow)"} />
-                <InfoRow icon={<Clock size={16} />} label="Thời gian phát hiện" value={new Date(alert.detectedAt).toLocaleString("vi-VN")} />
+                <InfoRow icon={<Clock size={16} />} label="Thời gian phát hiện" value={formatDateTime(alert.detectedAt)} />
                 <div>
                   <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>TRẠNG THÁI</span>
                   <div style={{

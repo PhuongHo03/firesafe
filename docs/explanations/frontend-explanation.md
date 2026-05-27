@@ -179,7 +179,7 @@ Việc tách lớp này giúp các file `.tsx` trong `src/app/` trở nên cực
 Navigation sidebar dùng chung cho tất cả trang (trừ Login). Hiển thị:
 - Logo + brand name
 - Link Dashboard, Alerts, Cameras với highlight trang hiện tại
-- Username + role của người đang đăng nhập
+- Username + role của người đang đăng nhập (`Admin` hoặc `Viewer`)
 - Nút Đăng xuất (xóa cookie → redirect `/login`)
 
 ---
@@ -188,17 +188,28 @@ Navigation sidebar dùng chung cho tất cả trang (trừ Login). Hiển thị:
 
 ### `/login` — Trang đăng nhập
 
-- Form đơn giản: username + password
+- Form đơn giản: email `@nhattienchung.vn` + password
 - Gọi `POST /api/v1/auth/login` → nhận JWT
 - Lưu token bằng `saveAuth()` → redirect về `/`
+- Có link sang `/register`
 - Hiển thị lỗi nếu sai credentials
+
+### `/register` — Đăng ký admin
+
+- Form: tên tài khoản hiển thị, email, password, xác nhận password
+- Client validate email phải kết thúc bằng `@nhattienchung.vn`
+- Client validate password xác nhận khớp
+- Gọi `POST /api/v1/auth/register` → tạo tài khoản `ROLE_VIEWER` ở trạng thái pending; email/tên tài khoản không được trùng
+- Không auto-login vì tài khoản chưa active; ở lại trang đăng ký và hiển thị thông báo chờ Ban quản trị kích hoạt
+- Admin phải vào `/admin/users` kích hoạt trước khi user login được
+- Không có chọn role khi đăng ký
 
 ### `/` — Dashboard
 
 | Tính năng | Mô tả |
 |---|---|
 | Cards monitoring | Backend status, AI Worker status, camera active/total, tổng alert |
-| System metrics | CPU, GPU, RAM, disk usage lấy từ monitoring-service |
+| System metrics | CPU %, RAM/Disk dạng used/total, GPU % + VRAM nếu có NVIDIA; dữ liệu lấy từ monitoring-service |
 | API/infra metrics | API latency/error/request count, Redis, RabbitMQ, MinIO |
 | Alert charts | Alert theo giờ và theo label từ `/api/v1/metrics/export` qua monitoring-service |
 | AI Worker runtime | Bảng camera đang detect: running, hasFrame, detections, alerts, inference ms |
@@ -211,13 +222,17 @@ Navigation sidebar dùng chung cho tất cả trang (trừ Login). Hiển thị:
 
 Hiển thị danh sách alert đầy đủ với phân trang, auto-refresh, click row để vào chi tiết, nút "Xóa" từng cảnh báo và nút "Xóa tất cả" cạnh "Làm mới".
 
+### `/admin/users` — Quản lý người dùng
+
+Chỉ Admin truy cập được. Trang này hiển thị danh sách tài khoản, bật/tắt active và chỉnh role giữa `ROLE_ADMIN` / `ROLE_VIEWER`. Tài khoản mới đăng ký mặc định là Viewer pending; Admin phải active thì user mới đăng nhập được.
+
 ### `/alerts/[id]` — Chi tiết Alert
 
 Hiển thị:
 - Ảnh snapshot từ MinIO (nếu có)
 - Tên camera, loại cảnh báo, độ tin cậy, thời gian, trạng thái
 - Link URL ảnh gốc để truy cập trực tiếp
-- Nút "Xóa" để xóa alert hiện tại rồi quay về `/alerts`
+- Nút "Xóa" chỉ hiện với Admin để xóa alert hiện tại rồi quay về `/alerts`
 
 ### `/cameras` — Quản lý Camera
 
@@ -225,7 +240,7 @@ Hiển thị:
 |---|---|
 | Mọi user | Xem danh sách camera (card grid) |
 | Mọi user | Xem trạng thái detect và MJPEG preview khi AI Worker đang chạy |
-| Mọi user | Start/Stop Detect cho từng camera qua AI Worker |
+| ADMIN | Start/Stop Detect cho từng camera qua AI Worker |
 | ADMIN | Nút "Thêm Camera" — form thêm mới |
 | ADMIN | Nút "Xóa" trên từng card |
 
@@ -265,4 +280,4 @@ CSS Variables được định nghĩa trong `globals.css`:
 
 ---
 
-*Tài liệu phản ánh trạng thái frontend tại **Giai đoạn 7**. Frontend có Dashboard tổng quan đọc metrics từ monitoring-service, trang `/alerts` quản lý danh sách đầy đủ/xóa alert, và trang `/cameras` tích hợp AI Worker RTSP preview/detect realtime; WebSocket real-time và `/admin/users` sẽ bổ sung sau nếu cần.*
+*Tài liệu phản ánh trạng thái frontend tại **Giai đoạn 7**. Frontend có login/register viewer-pending-activation (`@nhattienchung.vn`), `/admin/users` để Admin kích hoạt/chỉnh role, Dashboard tổng quan đọc metrics từ monitoring-service, trang `/alerts` quản lý danh sách/xóa alert theo quyền, và trang `/cameras` tích hợp AI Worker RTSP preview/detect realtime; WebSocket real-time sẽ bổ sung sau nếu cần.*

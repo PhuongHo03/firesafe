@@ -5,10 +5,10 @@ import { isAdmin } from "@/lib/auth";
 import Sidebar from "@/components/Sidebar";
 import { useCameras } from "@/hooks/useCameras";
 import { api, CameraDetectionStatus } from "@/lib/api";
-import { Camera as CameraIcon, Loader2, Play, Plus, Square, Trash2, Wifi, WifiOff } from "lucide-react";
+import { Camera as CameraIcon, Loader2, Play, Plus, RefreshCw, Square, Trash2, Wifi, WifiOff } from "lucide-react";
 
 export default function CamerasPage() {
-  const { cameras, loading, error, setError, addCamera, deleteCamera } = useCameras();
+  const { cameras, loading, refreshing, error, setError, reload, addCamera, deleteCamera } = useCameras();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ name: "", rtspUrl: "", location: "" });
   const [saving, setSaving] = useState(false);
@@ -20,11 +20,27 @@ export default function CamerasPage() {
     setAdmin(isAdmin());
   }, []);
 
+  async function loadStatuses() {
+    const entries = await Promise.all(
+      cameras.map(async cam => {
+        try {
+          return [cam.id, await api.getCameraDetectionStatus(cam.id)] as const;
+        } catch {
+          return [cam.id, { cameraId: cam.id, running: false, error: "AI Worker chưa sẵn sàng" }] as const;
+        }
+      })
+    );
+    setDetectionStatus(Object.fromEntries(entries));
+  }
+
   useEffect(() => {
-    if (cameras.length === 0) return;
+    if (cameras.length === 0) {
+      setDetectionStatus({});
+      return;
+    }
 
     let cancelled = false;
-    async function loadStatuses() {
+    async function loadCurrentStatuses() {
       const entries = await Promise.all(
         cameras.map(async cam => {
           try {
@@ -37,13 +53,18 @@ export default function CamerasPage() {
       if (!cancelled) setDetectionStatus(Object.fromEntries(entries));
     }
 
-    loadStatuses();
-    const timer = window.setInterval(loadStatuses, 5000);
+    loadCurrentStatuses();
+    const timer = window.setInterval(loadCurrentStatuses, 5000);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
     };
   }, [cameras]);
+
+  async function handleRefresh() {
+    await reload();
+    await loadStatuses();
+  }
 
   async function handleAdd(e: FormEvent) {
     e.preventDefault();
@@ -93,23 +114,28 @@ export default function CamerasPage() {
           <h1 style={{ margin: 0, fontSize: "1.5rem", fontWeight: 700, display: "flex", alignItems: "center", gap: "0.5rem" }}>
             <CameraIcon size={22} /> Quản lý Camera
           </h1>
-          {admin && (
-            <button id="add-camera-btn" onClick={() => setShowForm(v => !v)} style={{
-              background: "var(--accent)",
-              border: "none",
-              borderRadius: "0.5rem",
-              padding: "0.5rem 1rem",
-              color: "#fff",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: "0.4rem",
-              fontSize: "0.875rem",
-              fontWeight: 600,
-            }}>
-              <Plus size={16} /> Thêm Camera
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <button id="cameras-refresh-btn" onClick={handleRefresh} style={refreshBtn}>
+              <RefreshCw size={14} style={{ animation: refreshing ? "spin 1s linear infinite" : "none" }} /> Làm mới
             </button>
-          )}
+            {admin && (
+              <button id="add-camera-btn" onClick={() => setShowForm(v => !v)} style={{
+                background: "var(--accent)",
+                border: "none",
+                borderRadius: "0.5rem",
+                padding: "0.5rem 1rem",
+                color: "#fff",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "0.4rem",
+                fontSize: "0.875rem",
+                fontWeight: 600,
+              }}>
+                <Plus size={16} /> Thêm Camera
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Add form */}
@@ -181,7 +207,7 @@ export default function CamerasPage() {
                   )}
 
                   <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", justifyContent: "space-between" }}>
-                    {hasWorker ? (
+                    {admin && (hasWorker ? (
                       <button id={`stop-detect-${cam.id}`} disabled={busy} onClick={() => stopDetection(cam.id)} style={{ display: "flex", alignItems: "center", gap: "0.35rem", ...btnStyle, background: "var(--surface-2)", color: "var(--text)", cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.7 : 1 }}>
                         {busy ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Square size={13} />} {busy ? "Đang dừng..." : "Stop"}
                       </button>
@@ -189,7 +215,7 @@ export default function CamerasPage() {
                       <button id={`start-detect-${cam.id}`} disabled={busy} onClick={() => startDetection(cam.id)} style={{ display: "flex", alignItems: "center", gap: "0.35rem", ...btnStyle, background: "var(--accent)", color: "#fff", cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.7 : 1 }}>
                         {busy ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Play size={13} />} {busy ? "Đang bật..." : "Start Detect"}
                       </button>
-                    )}
+                    ))}
 
                     {admin && (
                       <button id={`delete-cam-${cam.id}`} onClick={() => deleteCamera(cam.id, cam.name)} style={{ display: "flex", alignItems: "center", gap: "0.3rem", background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", fontSize: "0.8rem", padding: 0 }}>
@@ -211,3 +237,4 @@ export default function CamerasPage() {
 const labelStyle: React.CSSProperties = { display: "block", fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.35rem" };
 const inputStyle: React.CSSProperties = { width: "100%", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: "0.5rem", padding: "0.5rem 0.75rem", color: "var(--text)", fontSize: "0.9rem", outline: "none" };
 const btnStyle: React.CSSProperties = { border: "none", borderRadius: "0.5rem", padding: "0.5rem 1.25rem", cursor: "pointer", fontSize: "0.875rem", fontWeight: 600 };
+const refreshBtn: React.CSSProperties = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.5rem", padding: "0.5rem 1rem", color: "var(--text-muted)", cursor: "pointer", display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.875rem" };

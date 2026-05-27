@@ -287,7 +287,7 @@ Default model order: `video-detect/models/wildfire-smoke-fire.pt`, then `video-d
 
 | Step | Component | Action |
 |---:|---|---|
-| 1 | Operator | Logs in through Next.js UI |
+| 1 | User | Logs in through Next.js UI |
 | 2 | Backend | Returns JWT and roles |
 | 3 | Frontend | Stores auth cookie |
 | 4 | Dashboard | Fetches paginated alerts |

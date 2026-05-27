@@ -3,13 +3,13 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import { Flame, LayoutDashboard, Camera, LogOut, ListChecks } from "lucide-react";
+import { Flame, LayoutDashboard, Camera, LogOut, ListChecks, Users } from "lucide-react";
 import { clearAuth, getUser, isAdmin } from "@/lib/auth";
 
 export default function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
-  const [user, setUser] = useState<{ username: string; roles: string[] } | null>(null);
+  const [user, setUser] = useState<{ username: string; email: string; roles: string[] } | null>(null);
   const [admin, setAdmin] = useState(false);
 
   useEffect(() => {
@@ -22,8 +22,11 @@ export default function Sidebar() {
     router.push("/login");
   }
 
+  const label = user?.roles.includes("ROLE_ADMIN") ? "Admin" : user ? "Viewer" : "";
+
   const links = [
     { href: "/", icon: LayoutDashboard, label: "Dashboard" },
+    ...(admin ? [{ href: "/admin/users", icon: Users, label: "Users" }] : []),
     { href: "/alerts", icon: ListChecks, label: "Alerts" },
     { href: "/cameras", icon: Camera, label: "Cameras" },
   ];
@@ -73,7 +76,7 @@ export default function Sidebar() {
       <div style={{ padding: "0 1.25rem", borderTop: "1px solid var(--border)", paddingTop: "1rem" }}>
         <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.75rem" }}>
           <div style={{ color: "var(--text)", fontWeight: 600 }}>{user?.username}</div>
-          <div>{admin ? "Admin" : "Operator"}</div>
+          <div>{label}</div>
         </div>
         <button id="logout-btn" onClick={logout} style={{
           width: "100%",

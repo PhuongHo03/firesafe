@@ -6,6 +6,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -48,7 +49,15 @@ public class GlobalExceptionHandler {
     public ProblemDetail handleBadCredentials(BadCredentialsException ex) {
         ProblemDetail detail = ProblemDetail.forStatus(HttpStatus.UNAUTHORIZED);
         detail.setTitle("Invalid credentials");
-        detail.setDetail("Username or password is incorrect");
+        detail.setDetail("Tài khoản không tồn tại");
+        return detail;
+    }
+
+    @ExceptionHandler(ResponseStatusException.class)
+    public ProblemDetail handleResponseStatus(ResponseStatusException ex) {
+        ProblemDetail detail = ProblemDetail.forStatus(ex.getStatusCode());
+        detail.setTitle(ex.getReason());
+        detail.setDetail(ex.getReason());
         return detail;
     }
 

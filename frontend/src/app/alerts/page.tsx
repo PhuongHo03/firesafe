@@ -1,12 +1,15 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import { useAlerts } from "@/hooks/useAlerts";
+import { isAdmin } from "@/lib/auth";
 import { AlertTriangle, CheckCircle, RefreshCw, Trash2 } from "lucide-react";
 
 const CONFIDENCE_COLOR = (c: number) =>
   c >= 0.9 ? "var(--accent)" : c >= 0.75 ? "var(--yellow)" : "var(--green)";
+const formatDateTime = (value: string) => new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "medium", timeZone: "Asia/Ho_Chi_Minh" }).format(new Date(value));
 
 function Badge({ label }: { label: string }) {
   const color = label === "fire" ? "var(--accent)" : "var(--yellow)";
@@ -26,10 +29,15 @@ function Badge({ label }: { label: string }) {
 
 export default function AlertsPage() {
   const router = useRouter();
+  const [admin, setAdmin] = useState(false);
   const {
     alerts, total, page, setPage, totalPages,
     loading, error, refreshing, reload, deleteAlert, deleteAllAlerts
   } = useAlerts();
+
+  useEffect(() => {
+    setAdmin(isAdmin());
+  }, []);
 
   return (
     <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
@@ -47,18 +55,20 @@ export default function AlertsPage() {
               <RefreshCw size={14} style={{ animation: refreshing ? "spin 1s linear infinite" : "none" }} />
               Làm mới
             </button>
-            <button
-              id="delete-all-alerts-btn"
-              disabled={total === 0}
-              onClick={() => {
-                if (confirm("Xóa tất cả cảnh báo?")) {
-                  deleteAllAlerts();
-                }
-              }}
-              style={{ ...deleteBtn, opacity: total === 0 ? 0.5 : 1, cursor: total === 0 ? "not-allowed" : "pointer" }}
-            >
-              <Trash2 size={14} /> Xóa tất cả
-            </button>
+            {admin && (
+              <button
+                id="delete-all-alerts-btn"
+                disabled={total === 0}
+                onClick={() => {
+                  if (confirm("Xóa tất cả cảnh báo?")) {
+                    deleteAllAlerts();
+                  }
+                }}
+                style={{ ...deleteBtn, opacity: total === 0 ? 0.5 : 1, cursor: total === 0 ? "not-allowed" : "pointer" }}
+              >
+                <Trash2 size={14} /> Xóa tất cả
+              </button>
+            )}
           </div>
         </div>
 
@@ -72,7 +82,7 @@ export default function AlertsPage() {
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                {["ID", "Camera", "Loại", "Độ tin cậy", "Thời gian", "Trạng thái", "Xóa"].map(h => (
+                {["ID", "Camera", "Loại", "Độ tin cậy", "Thời gian", "Trạng thái", ...(admin ? ["Xóa"] : [])].map(h => (
                   <th key={h} style={{ padding: "0.75rem 1rem", textAlign: "left", fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>
                     {h}
                   </th>
@@ -102,7 +112,7 @@ export default function AlertsPage() {
                   </td>
                   <td style={td}>
                     <span style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
-                      {new Date(a.detectedAt).toLocaleString("vi-VN")}
+                      {formatDateTime(a.detectedAt)}
                     </span>
                   </td>
                   <td style={td}>
@@ -111,20 +121,22 @@ export default function AlertsPage() {
                       : <span style={{ display: "flex", alignItems: "center", gap: "0.3rem", color: "var(--green)", fontSize: "0.85rem" }}><CheckCircle size={13} /> Đã xử lý</span>
                     }
                   </td>
-                  <td style={td}>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (confirm(`Xóa cảnh báo #${a.id}?`)) {
-                          deleteAlert(a.id);
-                        }
-                      }}
-                      style={deleteBtn}
-                      title="Xóa cảnh báo"
-                    >
-                      <Trash2 size={14} /> Xóa
-                    </button>
-                  </td>
+                  {admin && (
+                    <td style={td}>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm(`Xóa cảnh báo #${a.id}?`)) {
+                            deleteAlert(a.id);
+                          }
+                        }}
+                        style={deleteBtn}
+                        title="Xóa cảnh báo"
+                      >
+                        <Trash2 size={14} /> Xóa
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

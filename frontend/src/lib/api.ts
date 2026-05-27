@@ -46,10 +46,17 @@ async function requestMonitoring<T>(path: string): Promise<T> {
 }
 
 export const api = {
-  login(username: string, password: string) {
-    return request<{ token: string; username: string; roles: string[] }>(
+  login(email: string, password: string) {
+    return request<AuthResponse>(
       "/api/v1/auth/login",
-      { method: "POST", body: JSON.stringify({ username, password }) }
+      { method: "POST", body: JSON.stringify({ email, password }) }
+    );
+  },
+
+  register(username: string, email: string, password: string) {
+    return request<AuthResponse>(
+      "/api/v1/auth/register",
+      { method: "POST", body: JSON.stringify({ username, email, password }) }
     );
   },
 
@@ -129,7 +136,28 @@ export const api = {
   getDashboardMetrics() {
     return requestMonitoring<DashboardMetrics>("/api/dashboard/metrics");
   },
+
+  getUsers(token: string) {
+    return request<UserAccount[]>("/api/v1/users", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  },
+
+  updateUser(id: number, data: { active: boolean; role: "ROLE_ADMIN" | "ROLE_VIEWER" }, token: string) {
+    return request<UserAccount>(`/api/v1/users/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  },
 };
+
+export interface AuthResponse {
+  token: string;
+  username: string;
+  email: string;
+  roles: string[];
+}
 
 export interface Alert {
   id: number;
@@ -156,6 +184,16 @@ export interface CameraDetectionStatus {
   error: string | null;
   lastAlertAt?: string | null;
   hasFrame?: boolean;
+}
+
+export interface UserAccount {
+  id: number;
+  username: string;
+  email: string;
+  active: boolean;
+  roles: string[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface DashboardMetrics {

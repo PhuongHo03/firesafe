@@ -3,6 +3,9 @@ import { useRouter } from "next/navigation";
 import { api, Alert } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 
+const MIN_REFRESH_MS = 250;
+const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 export function useAlerts(pageSize = 15) {
   const router = useRouter();
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -14,21 +17,21 @@ export function useAlerts(pageSize = 15) {
   const [refreshing, setRefreshing] = useState(false);
   const [token, setToken] = useState<string>();
 
-  const load = useCallback(async (p: number) => {
+  const load = useCallback(async (p: number, showLoading = true) => {
     if (!token) {
       return;
     }
-    setLoading(true);
+    if (showLoading) setLoading(true);
     try {
       const data = await api.getAlerts(p, pageSize, token);
       setAlerts(data.content);
       setTotal(data.totalElements);
       setTotalPages(data.totalPages);
-      setError(""); // clear error on success
+      setError("");
     } catch {
       setError("Không thể tải danh sách cảnh báo");
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   }, [token, pageSize]);
 
@@ -49,7 +52,7 @@ export function useAlerts(pageSize = 15) {
   useEffect(() => {
     const id = setInterval(() => {
       setRefreshing(true);
-      load(page).finally(() => setRefreshing(false));
+      load(page, false).finally(() => setRefreshing(false));
     }, 30_000);
     return () => clearInterval(id);
   }, [page, load]);
@@ -79,6 +82,15 @@ export function useAlerts(pageSize = 15) {
     }
   }, [token, load]);
 
+  const reload = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([load(page, false), wait(MIN_REFRESH_MS)]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [page, load]);
+
   return {
     alerts,
     total,
@@ -88,7 +100,7 @@ export function useAlerts(pageSize = 15) {
     loading,
     error,
     refreshing,
-    reload: () => load(page),
+    reload,
     deleteAlert,
     deleteAllAlerts,
   };

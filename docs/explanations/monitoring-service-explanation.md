@@ -9,7 +9,7 @@
 ```text
 monitoring-service/
 ├── service.py              ← HTTP scraper/aggregator
-├── requirements.txt        ← requests, redis, minio
+├── requirements.txt        ← requests, redis, minio, psutil
 └── venv/                   ← Generated local venv, không commit
 ```
 
@@ -26,6 +26,8 @@ Redis / RabbitMQ / MinIO / host system                  ┘
 ```
 
 Backend và AI Worker chỉ export metrics nhẹ. Monitoring service chịu trách nhiệm ping/scrape, degrade từng card nếu dependency down, rồi gom thành một response JSON cho UI.
+
+System metrics được lấy trực tiếp từ máy thật host khi runtime manager start service native: CPU/RAM/Disk dùng `psutil` (`cpu_percent(interval=0.1)`, `virtual_memory`, `disk_usage`); GPU dùng `nvidia-smi` nếu máy có NVIDIA driver/tool trong PATH, nếu không thì Dashboard hiển thị `N/A`.
 
 ---
 
