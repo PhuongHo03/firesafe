@@ -1,6 +1,6 @@
 # 📊 Monitoring Service — Giải thích Scraper/Aggregator
 
-> Host-process nhẹ cho Giai đoạn 7. Service này scrape/export metrics từ Backend, AI Worker và infra rồi trả JSON cho Dashboard UI. Không dùng Grafana.
+> Scraper/aggregator nhẹ cho Dashboard UI. Service này chạy được cả native host-process và Docker Compose Phase 8.
 
 ---
 
@@ -9,6 +9,7 @@
 ```text
 monitoring-service/
 ├── service.py              ← HTTP scraper/aggregator
+├── Dockerfile              ← Container image cho Docker Compose
 ├── requirements.txt        ← requests, redis, minio, psutil
 └── venv/                   ← Generated local venv, không commit
 ```
@@ -25,13 +26,43 @@ AI Worker /metrics                                      ├─> monitoring-servi
 Redis / RabbitMQ / MinIO / host system                  ┘
 ```
 
-Backend và AI Worker chỉ export metrics nhẹ. Monitoring service chịu trách nhiệm ping/scrape, degrade từng card nếu dependency down, rồi gom thành một response JSON cho UI.
+Backend và AI Worker chỉ export metrics nhẹ. Monitoring service chịu trách nhiệm ping/scrape, degrade từng card nếu dependency down, rồi gom thành một response JSON cho UI. Trong Docker Compose, Dashboard gọi endpoint này qua Nginx tại `/api/dashboard/metrics`. Response được cache ngắn trong Redis mặc định 2 giây để nhiều dashboard/browser không scrape toàn bộ dependency liên tục nhưng vẫn đủ gần realtime cho UI và cơ chế chặn mở thêm camera preview khi hệ thống gần quá tải.
 
-System metrics được lấy trực tiếp từ máy thật host khi runtime manager start service native: CPU/RAM/Disk dùng `psutil` (`cpu_percent(interval=0.1)`, `virtual_memory`, `disk_usage`); GPU dùng `nvidia-smi` nếu máy có NVIDIA driver/tool trong PATH, nếu không thì Dashboard hiển thị `N/A`.
+System metrics dùng `psutil` (`cpu_percent(interval=0.1)`, `virtual_memory`, `disk_usage`); GPU dùng `nvidia-smi` nếu máy có NVIDIA driver/tool trong PATH, nếu không thì Dashboard hiển thị `N/A`. Khi chạy native qua runtime manager, CPU/RAM/Disk là máy host thật. Khi chạy Docker Compose trên Linux, container được mount `/proc`, `/sys`, `/` vào `/host/*` và set `HOST_PROC`, `HOST_SYS`, `HOST_ROOT` để đọc host Linux thật. Trên Docker Desktop Windows, container chạy trong Linux VM nên không bảo đảm phản ánh Windows host thật.
 
 ---
 
 ## 🚀 Cách chạy
+
+### Docker Compose full stack — workflow chính Giai đoạn 8
+
+```powershell
+Copy-Item .env.example .env
+# chỉnh .env nếu cần
+docker compose up --build -d
+```
+
+```bash
+cp .env.example .env
+# chỉnh .env nếu cần
+docker compose up --build -d
+```
+
+Trong Compose, `monitoring-service` chạy nội bộ tại `monitoring-service:8091`, không publish trực tiếp ra host. Browser gọi qua Nginx:
+
+```text
+http://localhost:<FRONTEND_PORT>/api/dashboard/metrics
+http://localhost:<FRONTEND_PORT>/monitoring/health
+```
+
+Mặc định:
+
+```text
+http://localhost:3000/api/dashboard/metrics
+http://localhost:3000/monitoring/health
+```
+
+### Native dev runtime
 
 Runtime manager tự start service khi chạy:
 
@@ -116,7 +147,7 @@ Mỗi log chỉ giữ 50 dòng cuối như các host process khác.
 
 ## ⚙️ Config
 
-Runtime manager truyền các URL/port động:
+Runtime manager truyền các URL/port động; Docker Compose truyền cùng các giá trị qua root `.env`/`environment`:
 
 | Argument | Default | Mô tả |
 |---|---|---|
@@ -134,6 +165,10 @@ Runtime manager truyền các URL/port động:
 | `--minio-secret-key` | `minioadmin` | MinIO secret key |
 | `--minio-bucket` | `snapshots` | Snapshot bucket |
 | `--timeout` | `2.0` | Timeout mỗi scrape |
+| `--cache-ttl-seconds` | `MONITORING_CACHE_TTL_SECONDS`, fallback `2` | TTL cache Redis cho `/api/dashboard/metrics` |
+| `HOST_PROC` | Không | Docker Linux host proc mount, ví dụ `/host/proc` |
+| `HOST_SYS` | Không | Docker Linux host sys mount, ví dụ `/host/sys` |
+| `HOST_ROOT` | Không | Docker Linux host root mount, ví dụ `/host/root` |
 
 ---
 
@@ -143,4 +178,4 @@ Nếu một dependency down, service vẫn trả `200` cho `/api/dashboard/metri
 
 ---
 
-*Tài liệu phản ánh trạng thái `monitoring-service/` tại **Giai đoạn 7**. Monitoring là service riêng scrape metrics cho Dashboard UI, không dùng Grafana trong local MVP.*
+*Tài liệu phản ánh trạng thái `monitoring-service/` tại **Giai đoạn 8**. Monitoring là service riêng scrape metrics cho Dashboard UI, chạy được native host-process hoặc Docker Compose với Linux host metrics mount; không dùng Grafana trong local MVP.*

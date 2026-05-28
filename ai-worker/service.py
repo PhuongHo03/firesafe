@@ -9,12 +9,14 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from src.camera_worker import CameraWorker, CameraWorkerConfig, SharedRtspSource
-from src.config import AI_WORKER_ROOT, DEFAULT_MODEL_PATH, FALLBACK_MODEL_PATH, resolve_model_path
+from src.config import AI_WORKER_ROOT, DEFAULT_MODEL_PATH, resolve_model_path
 from src.detector import validate_model_path
 
 WORKERS: dict[int, CameraWorker] = {}
 SOURCES: dict[str, tuple[SharedRtspSource, int]] = {}
 WORKERS_LOCK = threading.Lock()
+STATUS_CACHE: dict[int, tuple[float, dict]] = {}
+STATUS_CACHE_TTL_SECONDS = float(os.getenv("AI_WORKER_STATUS_CACHE_TTL_SECONDS", "1"))
 STREAM_RE = re.compile(r"^/api/cameras/(\d+)/stream\.mjpg$")
 STATUS_RE = re.compile(r"^/api/cameras/(\d+)/status$")
 
@@ -42,8 +44,7 @@ class AIWorkerHandler(BaseHTTPRequestHandler):
         status_match = STATUS_RE.match(path)
         if status_match:
             camera_id = int(status_match.group(1))
-            worker = self._get_worker(camera_id)
-            self._json(200, worker.status() if worker else {"cameraId": camera_id, "running": False, "error": None, "lastAlertAt": None, "hasFrame": False})
+            self._json(200, self._camera_status(camera_id))
             return
 
         stream_match = STREAM_RE.match(path)
@@ -90,6 +91,7 @@ class AIWorkerHandler(BaseHTTPRequestHandler):
         with WORKERS_LOCK:
             old_worker = WORKERS.get(camera_id)
             if old_worker:
+                STATUS_CACHE.pop(camera_id, None)
                 self._json(200, old_worker.status())
                 return
             source_entry = SOURCES.get(rtsp_url)
@@ -102,6 +104,7 @@ class AIWorkerHandler(BaseHTTPRequestHandler):
                 source.start()
             worker = CameraWorker(config, source)
             WORKERS[camera_id] = worker
+            STATUS_CACHE.pop(camera_id, None)
         worker.start()
         self._json(200, {"cameraId": camera_id, "running": True})
 
@@ -111,6 +114,7 @@ class AIWorkerHandler(BaseHTTPRequestHandler):
         source_to_stop = None
         with WORKERS_LOCK:
             worker = WORKERS.pop(camera_id, None)
+            STATUS_CACHE.pop(camera_id, None)
             if worker:
                 rtsp_url = worker.config.rtsp_url
                 source, ref_count = SOURCES[rtsp_url]
@@ -152,6 +156,16 @@ class AIWorkerHandler(BaseHTTPRequestHandler):
     def _get_worker(self, camera_id: int) -> CameraWorker | None:
         with WORKERS_LOCK:
             return WORKERS.get(camera_id)
+
+    def _camera_status(self, camera_id: int) -> dict:
+        now = time.monotonic()
+        cached = STATUS_CACHE.get(camera_id)
+        if cached and now - cached[0] < STATUS_CACHE_TTL_SECONDS:
+            return cached[1]
+        worker = self._get_worker(camera_id)
+        status = worker.status() if worker else {"cameraId": camera_id, "running": False, "error": None, "lastAlertAt": None, "hasFrame": False}
+        STATUS_CACHE[camera_id] = (now, status)
+        return status
 
     def _monitoring_summary(self) -> dict:
         with WORKERS_LOCK:
@@ -275,16 +289,16 @@ def parse_args():
     parser.add_argument("--port", type=int, default=8090, help="Service port")
     parser.add_argument(
         "--model",
-        help=f"Path to YOLO .pt model (default: {DEFAULT_MODEL_PATH}, fallback: {FALLBACK_MODEL_PATH})",
+        help=f"Path to YOLO .pt model (default: {DEFAULT_MODEL_PATH})",
     )
     parser.add_argument("--conf", type=float, default=float(os.getenv("AI_WORKER_CONF", "0.25")), help="Confidence threshold")
     parser.add_argument("--backend-url", default=os.getenv("BACKEND_URL", "http://localhost:8080"), help="Backend API base URL")
-    parser.add_argument("--username", default="admin", help="Backend login username")
-    parser.add_argument("--password", default="admin123", help="Backend login password")
+    parser.add_argument("--username", default=os.getenv("FIRESAFE_USERNAME", "admin"), help="Backend login username")
+    parser.add_argument("--password", default=os.getenv("FIRESAFE_PASSWORD", "admin123"), help="Backend login password")
     parser.add_argument("--minio-url", default=os.getenv("MINIO_URL", "localhost:9000"), help="MinIO host:port")
-    parser.add_argument("--minio-access-key", default="minioadmin", help="MinIO access key")
-    parser.add_argument("--minio-secret-key", default="minioadmin", help="MinIO secret key")
-    parser.add_argument("--minio-bucket", default="snapshots", help="MinIO bucket")
+    parser.add_argument("--minio-access-key", default=os.getenv("MINIO_ACCESS_KEY", "minioadmin"), help="MinIO access key")
+    parser.add_argument("--minio-secret-key", default=os.getenv("MINIO_SECRET_KEY", "minioadmin"), help="MinIO secret key")
+    parser.add_argument("--minio-bucket", default=os.getenv("MINIO_BUCKET", "snapshots"), help="MinIO bucket")
     parser.add_argument("--alert-cooldown-seconds", type=float, default=30.0, help="Minimum seconds between alerts")
     parser.add_argument("--detection-interval-seconds", type=float, default=1.0, help="Seconds between YOLO inference runs")
     parser.add_argument("--reconnect-delay-seconds", type=float, default=5.0, help="Seconds before reconnecting RTSP")

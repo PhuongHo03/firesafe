@@ -1,0 +1,295 @@
+services:
+  mariadb:
+    image: mariadb:11.4
+    container_name: firesafe-mariadb
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${DB_NAME:-firesafe}
+      MYSQL_USER: ${DB_USER:-firesafe}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-firesafe}
+    ports:
+      - "${MARIADB_PORT:-7005}:3306"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - firesafe-net
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: firesafe-redis
+    ports:
+      - "${REDIS_PORT:-7007}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - firesafe-net
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: firesafe-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
+    ports:
+      - "${RABBITMQ_PORT:-7008}:5672"
+      - "${RABBITMQ_UI_PORT:-7004}:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - firesafe-net
+
+  minio:
+    image: minio/minio:latest
+    container_name: firesafe-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    ports:
+      - "${MINIO_API_PORT:-7006}:9000"
+      - "${MINIO_CONSOLE_PORT:-7002}:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - firesafe-net
+
+  backend:
+    build:
+      context: ./backend
+    image: firesafe-backend:latest
+    container_name: firesafe-backend
+    environment:
+      BACKEND_PORT: 8080
+      DB_HOST: mariadb
+      DB_PORT: 3306
+      DB_NAME: ${DB_NAME:-firesafe}
+      DB_USER: ${DB_USER:-firesafe}
+      DB_PASSWORD: ${DB_PASSWORD:-firesafe}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-guest}
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_BUCKET: ${MINIO_BUCKET:-snapshots}
+      JWT_SECRET: ${JWT_SECRET:-change-this-to-a-very-long-random-secret-key-at-least-256-bits}
+      FIRESAFE_PRESET_CAMERA_NAME: ${FIRESAFE_PRESET_CAMERA_NAME:-Camera RTSP Preset}
+      FIRESAFE_PRESET_CAMERA_LOCATION: ${FIRESAFE_PRESET_CAMERA_LOCATION:-Preset}
+      FIRESAFE_PRESET_CAMERA_RTSP_URL: ${FIRESAFE_PRESET_CAMERA_RTSP_URL:-}
+      TELEGRAM_ENABLED: ${TELEGRAM_ENABLED:-false}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+    expose:
+      - "8080"
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    networks:
+      - firesafe-net
+
+  worker:
+    build:
+      context: ./ai-worker
+    image: firesafe-worker:latest
+    container_name: firesafe-worker
+    environment:
+      AI_WORKER_PORT: 8090
+      BACKEND_URL: http://backend:8080
+      FIRESAFE_USERNAME: ${FIRESAFE_USERNAME:-admin}
+      FIRESAFE_PASSWORD: ${FIRESAFE_PASSWORD:-admin123}
+      MINIO_URL: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_BUCKET: ${MINIO_BUCKET:-snapshots}
+      AI_WORKER_CONF: ${AI_WORKER_CONF:-0.25}
+      AI_WORKER_RTSP_TRANSPORTS: ${AI_WORKER_RTSP_TRANSPORTS:-default,udp,tcp}
+      AI_WORKER_RTSP_BUFFER_SIZE: ${AI_WORKER_RTSP_BUFFER_SIZE:-1}
+      AI_WORKER_OVERLAY_TTL_SECONDS: ${AI_WORKER_OVERLAY_TTL_SECONDS:-2.0}
+      AI_WORKER_STATUS_CACHE_TTL_SECONDS: ${AI_WORKER_STATUS_CACHE_TTL_SECONDS:-1.0}
+      AI_WORKER_SUSTAINED_DETECTION_SECONDS: ${AI_WORKER_SUSTAINED_DETECTION_SECONDS:-3.0}
+      AI_MODEL_URL: ${AI_MODEL_URL:-https://huggingface.co/TommyNgx/YOLOv10-Fire-and-Smoke-Detection/resolve/main/best.pt}
+      AI_MODEL_PATH: ${AI_MODEL_PATH:-/app/models/best.pt}
+      HF_TOKEN: ${HF_TOKEN:-}
+    expose:
+      - "8090"
+    volumes:
+      - ./ai-worker/service.py:/app/service.py:ro
+      - ./ai-worker/src:/app/src:ro
+      - ai_worker_models:/app/models
+    depends_on:
+      backend:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8090/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+      - firesafe-net
+
+  monitoring-service:
+    build:
+      context: ./monitoring-service
+    image: firesafe-monitoring-service:latest
+    container_name: firesafe-monitoring-service
+    privileged: true
+    environment:
+      BACKEND_URL: http://backend:8080
+      AI_WORKER_URL: http://worker:8090
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      RABBITMQ_URL: http://rabbitmq:15672
+      RABBITMQ_USERNAME: ${RABBITMQ_USER:-guest}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-guest}
+      MINIO_URL: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_BUCKET: ${MINIO_BUCKET:-snapshots}
+      MONITORING_CACHE_TTL_SECONDS: ${MONITORING_CACHE_TTL_SECONDS:-2}
+      HOST_PROC: ${HOST_PROC:-/host/proc}
+      HOST_SYS: ${HOST_SYS:-/host/sys}
+      HOST_ROOT: ${HOST_ROOT:-/host/root}
+    expose:
+      - "8091"
+    volumes:
+      - ./monitoring-service/service.py:/app/service.py:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host/root:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+      worker:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8091/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+      - firesafe-net
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
+        NEXT_PUBLIC_AI_WORKER_URL: ${NEXT_PUBLIC_AI_WORKER_URL:-}
+        NEXT_PUBLIC_MONITORING_URL: ${NEXT_PUBLIC_MONITORING_URL:-}
+    image: firesafe-frontend:latest
+    container_name: firesafe-frontend
+    environment:
+      PORT: 3000
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
+      NEXT_PUBLIC_AI_WORKER_URL: ${NEXT_PUBLIC_AI_WORKER_URL:-}
+      NEXT_PUBLIC_MONITORING_URL: ${NEXT_PUBLIC_MONITORING_URL:-}
+    expose:
+      - "3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+      worker:
+        condition: service_healthy
+      monitoring-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+      - firesafe-net
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: firesafe-nginx
+    ports:
+      - "${APP_BIND_ADDRESS:-0.0.0.0}:${FRONTEND_PORT:-3000}:80"
+    volumes:
+      - ./infra/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      frontend:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+      worker:
+        condition: service_healthy
+      monitoring-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+      - firesafe-net
+
+  adminer:
+    image: adminer:4.8.1
+    container_name: firesafe-adminer
+    environment:
+      ADMINER_DEFAULT_SERVER: mariadb
+    ports:
+      - "${ADMINER_PORT:-7001}:8080"
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    networks:
+      - firesafe-net
+
+  redisinsight:
+    image: redis/redisinsight:latest
+    container_name: firesafe-redisinsight
+    ports:
+      - "${REDISINSIGHT_PORT:-7003}:5540"
+    volumes:
+      - redisinsight_data:/data
+    networks:
+      - firesafe-net
+
+networks:
+  firesafe-net:
+
+volumes:
+  mariadb_data:
+  minio_data:
+  redisinsight_data:
+  ai_worker_models:

@@ -10,7 +10,8 @@
 frontend/
 │
 ├── .env.local.example          ← Mẫu env khi chạy frontend thủ công từ source
-├── .env.local                  ← Auto-generated bởi runtime manager (API, AI Worker, Monitoring URLs)
+├── Dockerfile                  ← Build Next.js image cho Docker Compose
+├── .env.local                  ← Auto-generated bởi runtime manager (API, Worker, Monitoring URLs)
 │
 └── src/
     ├── app/                    ← App Router (Next.js 16)
@@ -51,7 +52,45 @@ frontend/
 
 ## 🚀 Cách chạy
 
-Cách chính từ project root:
+### Docker Compose full stack — workflow chính Giai đoạn 8
+
+Từ project root:
+
+```powershell
+Copy-Item .env.example .env
+# chỉnh .env nếu cần
+docker compose up --build -d
+```
+
+```bash
+cp .env.example .env
+# chỉnh .env nếu cần
+docker compose up --build -d
+```
+
+Mở UI qua Nginx:
+
+```text
+http://localhost:<FRONTEND_PORT>
+```
+
+Mặc định:
+
+```text
+http://localhost:3000
+```
+
+Trong Docker Compose, frontend image được build với `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_AI_WORKER_URL`, `NEXT_PUBLIC_MONITORING_URL` để trống. Browser gọi same-origin qua Nginx:
+
+```text
+/api/v1/...              -> backend
+/api/cameras/...         -> AI Worker
+/api/dashboard/metrics   -> monitoring-service
+```
+
+### Native dev runtime
+
+Dùng khi cần frontend/backend/worker chạy host-process để debug nhanh:
 
 ```powershell
 .\setup.ps1 up
@@ -63,7 +102,7 @@ Cách chính từ project root:
 
 Runtime manager tự chọn port trống, ghi `frontend/.env.local`, rồi start frontend.
 
-Nếu chạy thủ công:
+### Chạy thủ công frontend từ source
 
 ```powershell
 cd frontend
@@ -72,7 +111,7 @@ npm run build   # Build production
 npm start       # Chạy production build
 ```
 
-**Yêu cầu khi chạy thủ công:** Copy `frontend/.env.local.example` thành `frontend/.env.local` rồi chỉnh Backend/AI Worker URL nếu không dùng runtime manager.
+**Yêu cầu khi chạy thủ công:** Copy `frontend/.env.local.example` thành `frontend/.env.local` rồi chỉnh Backend/AI Worker/Monitoring URL nếu không dùng runtime manager.
 
 ---
 
@@ -89,7 +128,7 @@ NEXT_PUBLIC_AI_WORKER_URL=http://localhost:<AI_WORKER_PORT>
 NEXT_PUBLIC_MONITORING_URL=http://localhost:<MONITORING_PORT>
 ```
 
-Prefix `NEXT_PUBLIC_` bắt buộc để biến được expose ra phía client (browser). Khi deploy Docker, đổi thành URL service/container tương ứng.
+Prefix `NEXT_PUBLIC_` bắt buộc để biến được expose ra phía client (browser). Native runtime ghi URL direct như `http://localhost:<PORT>` vào `.env.local`. Docker Compose để các giá trị này trống trong root `.env`, nên frontend gọi same-origin qua Nginx (`/api/v1`, `/api/cameras`, `/api/dashboard/metrics`). Vì Next.js bake `NEXT_PUBLIC_*` vào bundle lúc build, đổi public URL/port thì cần rebuild frontend image. Nếu đặt explicit URL, URL đó phải browser truy cập được, không dùng tên service nội bộ như `http://backend:8080`.
 
 ---
 
@@ -97,7 +136,15 @@ Prefix `NEXT_PUBLIC_` bắt buộc để biến được expose ra phía client 
 
 ### `src/lib/api.ts` — API Client
 
-API client tập trung, tất cả component đều dùng object `api` thay vì gọi `fetch` trực tiếp:
+API client tập trung, tất cả component đều dùng object `api` thay vì gọi `fetch` trực tiếp. Nếu `NEXT_PUBLIC_*` không được set, base URL là chuỗi rỗng để request đi same-origin qua Nginx:
+
+```text
+/api/v1/...              -> backend
+/api/cameras/...         -> worker
+/api/dashboard/metrics   -> monitoring-service
+```
+
+Các method chính:
 
 ```ts
 api.login(username, password)           // → { token, username, roles }
@@ -244,7 +291,7 @@ Hiển thị:
 | ADMIN | Nút "Thêm Camera" — form thêm mới |
 | ADMIN | Nút "Xóa" trên từng card |
 
-Form thêm camera yêu cầu: Tên, Vị trí, RTSP URL. Trang `/cameras` poll trạng thái AI Worker mỗi 5 giây qua `NEXT_PUBLIC_AI_WORKER_URL`, hiển thị lỗi RTSP nếu worker trả về `error`, và dùng `<img>` để render stream `/api/cameras/{id}/stream.mjpg` khi detect đang chạy. Nếu worker đang lỗi/retry RTSP, UI vẫn hiện nút **Stop** để người dùng dừng worker thay vì hiện **Start Detect** gây spam start.
+Form thêm camera yêu cầu: Tên, Vị trí, RTSP URL. Trang `/cameras` poll trạng thái AI Worker mỗi 10 giây, hiển thị lỗi RTSP nếu worker trả về `error`, và dùng `<img>` để render stream `/api/cameras/{id}/stream.mjpg` khi detect đang chạy. UI cho phép mở nhiều preview MJPEG; trước khi mở thêm preview sẽ gọi `/api/dashboard/metrics`, lấy mức tải cao nhất giữa CPU/RAM/GPU và chặn nếu ≥ 80% để tránh làm máy/Nginx/worker quá tải. Nếu worker đang lỗi/retry RTSP, UI vẫn hiện nút **Stop** để người dùng dừng worker thay vì hiện **Start Detect** gây spam start.
 
 ---
 
@@ -280,4 +327,4 @@ CSS Variables được định nghĩa trong `globals.css`:
 
 ---
 
-*Tài liệu phản ánh trạng thái frontend tại **Giai đoạn 7**. Frontend có login/register viewer-pending-activation (`@nhattienchung.vn`), `/admin/users` để Admin kích hoạt/chỉnh role, Dashboard tổng quan đọc metrics từ monitoring-service, trang `/alerts` quản lý danh sách/xóa alert theo quyền, và trang `/cameras` tích hợp AI Worker RTSP preview/detect realtime; WebSocket real-time sẽ bổ sung sau nếu cần.*
+*Tài liệu phản ánh trạng thái frontend tại **Giai đoạn 8**. Frontend có login/register viewer-pending-activation (`@nhattienchung.vn`), `/admin/users` để Admin kích hoạt/chỉnh role, Dashboard tổng quan đọc metrics từ monitoring-service, trang `/alerts` quản lý danh sách/xóa alert theo quyền, trang `/cameras` tích hợp Worker RTSP preview/detect realtime, và có Dockerfile để build bằng root `.env`/Compose; WebSocket real-time sẽ bổ sung sau nếu cần.*

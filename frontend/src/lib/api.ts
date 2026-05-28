@@ -1,14 +1,17 @@
-// Centralized API client — reads NEXT_PUBLIC_API_URL from env
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
-const AI_WORKER_URL = process.env.NEXT_PUBLIC_AI_WORKER_URL ?? "http://localhost:8090";
-const MONITORING_URL = process.env.NEXT_PUBLIC_MONITORING_URL ?? "http://localhost:8091";
+// Centralized API client — empty env means same-origin reverse proxy
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
+const AI_WORKER_URL = process.env.NEXT_PUBLIC_AI_WORKER_URL ?? "";
+const MONITORING_URL = process.env.NEXT_PUBLIC_MONITORING_URL ?? "";
+const REQUEST_TIMEOUT_MS = 30000;
 
 async function request<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
+  const signal = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
   const res = await fetch(`${BASE_URL}${path}`, {
     ...options,
+    signal,
     headers: { "Content-Type": "application/json", ...options.headers },
   });
   if (!res.ok) {
@@ -25,8 +28,10 @@ async function requestAI<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
+  const signal = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
   const res = await fetch(`${AI_WORKER_URL}${path}`, {
     ...options,
+    signal,
     headers: { "Content-Type": "application/json", ...options.headers },
   });
   if (!res.ok) {
@@ -37,7 +42,8 @@ async function requestAI<T>(
 }
 
 async function requestMonitoring<T>(path: string): Promise<T> {
-  const res = await fetch(`${MONITORING_URL}${path}`);
+  const signal = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+  const res = await fetch(`${MONITORING_URL}${path}`, { signal });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(err.error ?? "Monitoring service error");

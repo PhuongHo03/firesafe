@@ -59,9 +59,11 @@ python3 -m venv venv
 ```
 
 **Yêu cầu trước khi chạy:**
-1. Runtime chính đang chạy: `setup.ps1 up` trên Windows hoặc `setup.sh up` trên Linux
+1. Runtime chính đang chạy. Workflow Giai đoạn 8 ưu tiên `docker compose up --build -d`; native dev vẫn dùng `setup.ps1 up` trên Windows hoặc `setup.sh up` trên Linux.
 2. Backend có ít nhất 1 camera thật/preset. Mock-worker sẽ lấy camera đầu tiên từ `GET /api/v1/cameras`, không tự seed camera.
-3. Nếu runtime đang dùng port động, truyền env tương ứng trước khi chạy thủ công: `BACKEND_URL`, `MINIO_URL`, `MINIO_PUBLIC_URL`.
+3. Nếu test qua Docker Compose/Nginx, đặt `BACKEND_URL=http://localhost:<FRONTEND_PORT>` để gọi `/api/v1/...` qua proxy, mặc định `http://localhost:3000`.
+4. `MINIO_URL` vẫn trỏ MinIO API host port (`localhost:<MINIO_API_PORT>`, mặc định `localhost:7006`) vì SDK MinIO không đi qua Nginx.
+5. Nếu runtime native dùng port động, truyền env tương ứng trước khi chạy thủ công: `BACKEND_URL`, `MINIO_URL`, `MINIO_PUBLIC_URL`.
 
 ---
 
@@ -69,9 +71,9 @@ python3 -m venv venv
 
 | Biến | Default | Mục đích |
 |---|---|---|
-| `BACKEND_URL` | `http://localhost:8080` | Backend API base URL |
-| `MINIO_URL` | `localhost:9000` | MinIO API host:port cho SDK |
-| `MINIO_PUBLIC_URL` | `http://<MINIO_URL>` | URL lưu vào `imageUrl` |
+| `BACKEND_URL` | `http://localhost:8080` | Backend API base URL; Docker Compose/Nginx dùng `http://localhost:3000` mặc định |
+| `MINIO_URL` | `localhost:9000` | MinIO API host:port cho SDK; Docker Compose dùng `localhost:7006` mặc định |
+| `MINIO_PUBLIC_URL` | `http://<MINIO_URL>` | URL lưu vào `imageUrl`; Docker Compose thường là `http://localhost:7006` |
 | `MINIO_ACCESS_KEY` | `minioadmin` | MinIO access key |
 | `MINIO_SECRET_KEY` | `minioadmin` | MinIO secret key |
 | `MINIO_BUCKET` | `snapshots` | Bucket ảnh mock |
@@ -175,4 +177,4 @@ Port thực tế xem trong `.runtime/ports.env` sau khi chạy runtime manager `
 
 ---
 
-*Tài liệu phản ánh trạng thái mock-worker tại **Giai đoạn 6**. Mock-worker là E2E tester độc lập; runtime chính không phụ thuộc vào script này, AI Worker thật nằm trong `ai-worker/`.*
+*Tài liệu phản ánh trạng thái mock-worker tại **Giai đoạn 8**. Mock-worker vẫn là E2E tester độc lập; runtime chính không phụ thuộc vào script này, Worker thật nằm trong `ai-worker/` và Compose không chạy mock-worker.*

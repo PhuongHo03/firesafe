@@ -1,14 +1,49 @@
-# 🐳 docker-compose.dev.yml — Giải thích Infrastructure
+# 🐳 Infrastructure & Docker Runtime — Giải thích
 
-> File này dùng cho **môi trường phát triển local (development)**. Nó chỉ khởi động các service infrastructure (DB, cache, queue, storage) trong Docker. Spring Boot vẫn chạy trực tiếp trên máy host để tiện debug và hot-reload.
+> Workflow chính Giai đoạn 8 là **Docker Compose full stack** qua `docker-compose.yml` + Nginx reverse proxy. **Native dev** qua `setup.ps1`/`setup.sh` vẫn giữ để debug host-process nhanh.
 
 ---
 
-## 🚀 Cách sử dụng
+## 🚀 Chế độ 1 — Docker Compose full stack
 
-### Runtime manager local
+Giai đoạn 8 dùng `docker-compose.yml` để chạy full stack trong Docker:
 
-Chạy từ project root.
+```powershell
+Copy-Item .env.example .env
+# chỉnh .env nếu cần
+docker compose up --build -d
+```
+
+```bash
+cp .env.example .env
+# chỉnh .env nếu cần
+docker compose up --build -d
+```
+
+Docker users chỉ cần root env:
+
+```text
+project-or-deploy-folder/
+├── docker-compose.yml
+└── .env
+```
+
+Compose đọc root `.env`, rồi inject biến vào container qua `environment:`/`build.args:`. Service không cần đọc `.env.local` trong container.
+
+Flow env:
+
+```text
+Native dev: service/.env.local -> setup script -> process env -> service
+Docker:     root .env          -> docker compose -> container env -> service
+```
+
+Frontend là ngoại lệ quan trọng: `NEXT_PUBLIC_*` được bake vào bundle lúc `docker build`, nên compose truyền các biến này qua `build.args`. Trong Docker Compose, các giá trị này để trống để browser gọi same-origin qua Nginx.
+
+---
+
+## 🚀 Chế độ 2 — Native dev runtime
+
+Runtime manager giữ workflow dev nhanh: app service chạy trên host, infra chạy Docker.
 
 Windows:
 
@@ -28,13 +63,21 @@ Linux:
 
 | Command | Hành động |
 |---|---|
-| `up` | Tạo `.runtime/`, kiểm tra dependency, tự chuẩn bị JDK 21/frontend deps/AI Worker/monitoring-service venv khi cần, ghi `frontend/.env.local`, start Docker infra, backend, AI Worker, monitoring-service, frontend |
-| `down` | Dừng monitoring-service/AI Worker/frontend/backend bằng PID file có metadata kiểm chứng, `docker compose down`, xóa `.runtime/`; giữ deps/build cache |
-| `clean` | Làm toàn bộ việc của `down`, `docker compose down -v --remove-orphans`, xóa thêm generated artifacts local |
+| `up` | Tạo `.runtime/`, kiểm tra dependency, tự chuẩn bị JDK/frontend deps/AI Worker/monitoring venv khi cần, ghi `frontend/.env.local`, start Docker infra + backend + worker + monitoring + frontend |
+| `down` | Dừng host-process bằng PID metadata, `docker compose -f docker-compose.dev.yml down`, xóa `.runtime/`; giữ deps/build cache |
+| `clean` | Làm toàn bộ việc của `down`, xóa Docker volume/orphan thuộc project và generated artifacts local |
 
-`setup.ps1` dùng PowerShell/Windows paths; `setup.sh` dùng Bash/Linux paths nhưng giữ cùng command, port keys, log layout và cleanup scope.
+Native dev dùng service-local env nếu có:
 
-Runtime metadata/logs được ghi vào (`docker.log` đợi infra running/healthy rồi mới ghi Docker Compose status và logs). Mỗi file `.log` chỉ giữ 50 dòng cuối để tránh phình `.runtime/`:
+```text
+backend/.env.local
+frontend/.env.local
+ai-worker/.env.local
+```
+
+`setup.ps1`/`setup.sh` nạp các file này hoặc tự ghi env cần thiết rồi truyền vào process. App code vẫn đọc **process env**, không hardcode đường dẫn env file.
+
+Runtime metadata/logs:
 
 ```text
 .runtime/ports.env
@@ -45,229 +88,116 @@ Runtime metadata/logs được ghi vào (`docker.log` đợi infra running/healt
 .runtime/logs/monitoring-service.log
 ```
 
-`ports.env` chứa port host của backend, frontend, AI Worker, Monitoring service, MariaDB, Redis, RabbitMQ, MinIO, Adminer, RedisInsight. `up` ưu tiên port mặc định cho backend/frontend/AI Worker/Monitoring service. Các port infra được cấp từ dải `7001+` theo thứ tự Adminer, MinIO Console, RedisInsight, RabbitMQ UI, MariaDB, MinIO API, Redis, RabbitMQ; nếu port bận, script tự tăng dần tới port trống tiếp theo và truyền vào Docker Compose/backend/frontend/AI Worker/Monitoring service.
-
-Trước khi start, `up` kiểm tra Docker, Node/npm và Python đã có trên máy. Nếu thiếu các công cụ hệ thống này, script dừng và in hướng dẫn cài đặt. Với Java, script ưu tiên `jdk-21.0.3+9` trong project; nếu chưa có Java 21 trong PATH thì tự tải JDK 21 về project. Nếu `frontend/node_modules` chưa tồn tại, script tự chạy `npm install` trong `frontend/`. AI Worker và Monitoring service tự tạo venv riêng và cài `requirements.txt` khi start. Sau khi chọn port, script ghi `frontend/.env.local` với `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_AI_WORKER_URL` và `NEXT_PUBLIC_MONITORING_URL` khớp port runtime hiện tại.
-
-`down` xóa runtime artifacts gồm ports/logs/PID trong `.runtime/`, nhưng giữ `ai-worker/venv/`, `frontend/node_modules/`, `frontend/.next/`, `backend/target/` và local JDK để lần sau khởi động nhanh. Host-process chỉ bị dừng khi PID file khớp metadata process do chính `setup.ps1` start trong đúng thư mục service; script không kill theo port để tránh dừng nhầm process của dự án khác. `clean` là chế độ aggressive trong phạm vi project: xóa container, volume và orphan thuộc compose project này, không xóa Docker image dùng chung, xóa `.runtime/`, rồi xóa thêm `ai-worker/venv/`, `frontend/node_modules/`, `frontend/.next/`, `backend/target/`, `jdk-21.0.3+9/`.
-
-### Docker infra thủ công
-
-```bash
-# Khởi động tất cả service ở background
-docker compose -f docker-compose.dev.yml up -d
-
-# Kiểm tra trạng thái các service
-docker compose -f docker-compose.dev.yml ps
-
-# Xem log của một service cụ thể
-docker compose -f docker-compose.dev.yml logs -f rabbitmq
-
-# Dừng tất cả (giữ nguyên data)
-docker compose -f docker-compose.dev.yml stop
-
-# Dừng và xóa container (giữ nguyên volume/data)
-docker compose -f docker-compose.dev.yml down
-
-# Dừng và xóa cả data (reset hoàn toàn)
-docker compose -f docker-compose.dev.yml down -v
-```
-
-Sau khi chạy `up -d`, có thể khởi động Spring Boot thủ công bằng:
-```bash
-cd backend
-./mvnw spring-boot:run        # Linux/Mac
-.\mvnw.cmd spring-boot:run    # Windows
-```
+`ports.env` chứa port host thực tế cho frontend/backend/worker/monitoring và infra. Runtime manager ưu tiên port mặc định rồi tự tăng nếu port bận.
 
 ---
 
-## 📦 Các Service
+## 🌐 Nginx reverse proxy
 
-Các port trong bảng dưới là default khi chạy Docker Compose thủ công. Khi chạy bằng runtime manager `up`, port host được lấy từ `.runtime/ports.env`.
+Compose chỉ publish app qua Nginx tại `http://localhost:${FRONTEND_PORT}`. `frontend`, `backend`, `worker`, `monitoring-service` chỉ `expose` trong Docker network, không publish host ports.
 
-### 1. `mariadb` — Database chính
-
-| Thuộc tính | Giá trị |
+| Public path | Upstream |
 |---|---|
-| Image | `mariadb:11.4` |
-| Container | `firesafe-mariadb` |
-| Port | Runtime `MARIADB_PORT` → container `3306` (manual default `3306`) |
-| Database | `firesafe` |
-| Username | `firesafe` |
-| Password | `firesafe` |
-| Root password | `root` |
+| `/` | `frontend:3000` |
+| `/api/v1/` | `backend:8080` |
+| `/actuator/` | `backend:8080` |
+| `/swagger-ui/`, `/swagger-ui.html`, `/v3/api-docs/` | `backend:8080` |
+| `/api/cameras/` | `worker:8090` |
+| `/worker/health` | `worker:8090/health` |
+| `/api/dashboard/metrics` | `monitoring-service:8091` |
+| `/monitoring/health` | `monitoring-service:8091/health` |
+| `/health` | Nginx local health |
 
-**Vai trò:** Lưu trữ toàn bộ dữ liệu chính của hệ thống: cameras, alerts, users, roles.
+`/api/cameras/` tắt proxy buffering/cache và tăng timeout để MJPEG stream không bị stall. Nginx dùng Docker DNS resolver `127.0.0.11` với TTL ngắn để tránh lỗi 502 do giữ IP container cũ sau khi `worker`/service bị recreate.
 
-**Volume:** `mariadb_data` — data được lưu persistent vào Docker volume, không mất khi restart container.
+---
 
-**Healthcheck:** Kiểm tra MariaDB đã sẵn sàng nhận connection và InnoDB đã khởi tạo xong. Spring Boot sẽ không kết nối được nếu healthcheck chưa pass.
+## 📦 Docker Compose services
 
-**UI:** Truy cập qua **Adminer** (đã có trong compose) tại `http://localhost:<ADMINER_PORT>`.
-Hoặc dùng database client bên ngoài qua `localhost:<MARIADB_PORT>`: DBeaver, HeidiSQL, TablePlus, mysql CLI.
+| Service | Image/build | Host port mặc định | Mục đích |
+|---|---|---:|---|
+| `nginx` | `nginx:1.27-alpine` | `3000` | App entrypoint + reverse proxy |
+| `frontend` | `frontend/Dockerfile` | internal `3000` | Next.js UI |
+| `backend` | `backend/Dockerfile` | internal `8080` | Spring Boot API |
+| `worker` | `ai-worker/Dockerfile` | internal `8090` | AI Worker RTSP preview/detect |
+| `monitoring-service` | `monitoring-service/Dockerfile` | internal `8091` | Dashboard metrics aggregator |
+| `adminer` | `adminer:4.8.1` | `7001` | DB UI |
+| `minio` console | `minio/minio` | `7002` | MinIO UI |
+| `redisinsight` | `redis/redisinsight` | `7003` | Redis UI |
+| `rabbitmq` UI | `rabbitmq:3.13-management-alpine` | `7004` | RabbitMQ management UI |
+| `mariadb` | `mariadb:11.4` | `7005` | DB chính |
+| `minio` API | `minio/minio` | `7006` | Snapshot object storage |
+| `redis` | `redis:7.4-alpine` | `7007` | Debounce/cache |
+| `rabbitmq` AMQP | `rabbitmq:3.13-management-alpine` | `7008` | Queue |
 
-**Kết nối từ Spring Boot** (trong `application.yml`):
+`video-detect/` và `mock-worker/` không nằm trong runtime compose: chúng là CLI/debug/test tools chạy khi cần.
+
+---
+
+## 🔧 Root `.env`
+
+Root `.env.example` là superset biến deploy cho tất cả service:
+
+- public bind/ports: `APP_BIND_ADDRESS=0.0.0.0` để máy cùng LAN truy cập app qua IP host, `FRONTEND_PORT` cho Nginx app entrypoint, infra ports `7001–7008`
+- frontend public URLs: `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_AI_WORKER_URL`, `NEXT_PUBLIC_MONITORING_URL` (để trống để dùng same-origin Nginx)
+- DB/RabbitMQ/MinIO creds
+- backend auth: `JWT_SECRET`, `FIRESAFE_USERNAME`, `FIRESAFE_PASSWORD`
+- preset camera seed: `FIRESAFE_PRESET_CAMERA_RTSP_URL`, `FIRESAFE_PRESET_CAMERA_NAME`, `FIRESAFE_PRESET_CAMERA_LOCATION`
+- worker tuning: `AI_WORKER_CONF`, `AI_WORKER_RTSP_TRANSPORTS`, `AI_WORKER_RTSP_BUFFER_SIZE`, `AI_WORKER_OVERLAY_TTL_SECONDS`, `AI_WORKER_STATUS_CACHE_TTL_SECONDS`, `AI_WORKER_SUSTAINED_DETECTION_SECONDS`, `AI_MODEL_URL`, `AI_MODEL_PATH`, `HF_TOKEN`
+- monitoring cache/host mounts: `MONITORING_CACHE_TTL_SECONDS`, `HOST_PROC`, `HOST_SYS`, `HOST_ROOT`
+
+Không commit root `.env`; chỉ commit `.env.example`.
+
+---
+
+## 🤖 Worker model trong Docker
+
+`worker` dùng model mặc định `best.pt`.
+
+Docker entrypoint kiểm tra `AI_MODEL_PATH`:
+
+1. Nếu `/app/models/best.pt` đã tồn tại trong volume `ai_worker_models` → dùng lại.
+2. Nếu chưa có → tải từ `AI_MODEL_URL`:
+
+```text
+https://huggingface.co/TommyNgx/YOLOv10-Fire-and-Smoke-Detection/resolve/main/best.pt
+```
+
+Volume:
+
 ```yaml
-spring.datasource.url: jdbc:mariadb://localhost:<MARIADB_PORT>/firesafe
-spring.datasource.username: firesafe
-spring.datasource.password: firesafe
+ai_worker_models:/app/models
 ```
+
+Service `worker` start được không cần RTSP/GPU. RTSP chỉ cần khi user bấm **Start Detect** camera thật. Docker image mặc định dùng PyTorch CPU-only để tránh kéo CUDA wheels nặng; GPU runtime là hướng tối ưu riêng sau Phase 8.
+
+Nếu Hugging Face repo/model yêu cầu auth, set `HF_TOKEN` trong root `.env`. Nếu đã có `/app/models/best.pt` trong volume `ai_worker_models`, worker dùng cache và không tải lại.
 
 ---
 
-### 2. `redis` — Cache / Debounce
+## 📊 Monitoring trong Docker
 
-| Thuộc tính | Giá trị |
-|---|---|
-| Image | `redis:7.4-alpine` |
-| Container | `firesafe-redis` |
-| Port | Runtime `REDIS_PORT` → container `6379` (manual default `6379`) |
-| Auth | Không (dev mode) |
+Native runtime là cách ổn định nhất để lấy CPU/RAM/Disk của host thật trên Windows.
 
-**Vai trò:** Lưu trữ key debounce để chống spam alert. Khi AI Worker gửi alert từ một camera, Spring Boot set key `alert:debounce:{camera_id}` với TTL 5 phút vào Redis. Nếu key còn tồn tại, các alert tiếp theo từ camera đó sẽ không gửi notification.
+Docker Compose Phase 8 cấu hình `monitoring-service` theo hướng Linux host metrics:
 
-**Alpine image:** Dùng bản `alpine` (nhẹ hơn ~70%) vì đây là dev environment, không cần tính năng đầy đủ.
-
-**Không có volume:** Redis trong dev không cần persist data — nếu container restart, key debounce mất đi là chấp nhận được.
-
-**UI:** Truy cập qua **RedisInsight** (đã có trong compose) tại `http://localhost:<REDISINSIGHT_PORT>`.
-Hoặc dùng redis-cli trực tiếp trong container:
-```bash
-docker exec -it firesafe-redis redis-cli
-KEYS alert:debounce:*
-TTL alert:debounce:1
-```
-
-**Kết nối từ Spring Boot**:
 ```yaml
-spring.data.redis.host: localhost
-spring.data.redis.port: <REDIS_PORT>
+privileged: true
+volumes:
+  - /proc:/host/proc:ro
+  - /sys:/host/sys:ro
+  - /:/host/root:ro
+environment:
+  HOST_PROC: /host/proc
+  HOST_SYS: /host/sys
+  HOST_ROOT: /host/root
 ```
 
----
+`monitoring-service` dùng `psutil.PROCFS_PATH` và `HOST_ROOT` để đọc host Linux thật. Trên Docker Desktop Windows, container chạy trong Linux VM nên không bảo đảm phản ánh Windows host thật.
 
-### 3. `rabbitmq` — Message Broker
+GPU vẫn optional qua `nvidia-smi`; nếu không có NVIDIA/tooling thì Dashboard hiển thị `N/A`.
 
-| Thuộc tính | Giá trị |
-|---|---|
-| Image | `rabbitmq:3.13-management-alpine` |
-| Container | `firesafe-rabbitmq` |
-| Port AMQP | Runtime `RABBITMQ_PORT` → container `5672` (manual default `5672`) |
-| Port Management UI | Runtime `RABBITMQ_UI_PORT` → container `15672` (manual default `15672`) |
-| Username | `guest` |
-| Password | `guest` |
-
-**Vai trò:** Nhận message từ Spring Boot (`AlertService`) và chuyển đến `NotificationWorker` để gửi Telegram khi notification được bật. Việc dùng queue đảm bảo:
-- Nếu Telegram API tạm lỗi/rate limit, worker có thể retry mà không chặn request alert
-- `AlertService` trả response ngay cho AI Worker, không phải chờ notification gửi xong
-
-**Management UI:** Truy cập `http://localhost:<RABBITMQ_UI_PORT>` (`guest/guest`) để xem topology Exchange/Queue, số message đang chờ, consumer status.
-
-**`management-alpine` image:** Bản có sẵn giao diện web quản lý, tiện cho dev.
-
-**Kết nối từ Spring Boot**:
-```yaml
-spring.rabbitmq.host: localhost
-spring.rabbitmq.port: <RABBITMQ_PORT>
-spring.rabbitmq.username: guest
-spring.rabbitmq.password: guest
-```
-
----
-
-### 4. `minio` — Object Storage (lưu ảnh snapshot)
-
-| Thuộc tính | Giá trị |
-|---|---|
-| Image | `minio/minio:latest` |
-| Container | `firesafe-minio` |
-| Port API | Runtime `MINIO_API_PORT` → container `9000` (manual default `9000`) |
-| Port Console UI | Runtime `MINIO_CONSOLE_PORT` → container `9001` (manual default `9001`) |
-| Root User | `minioadmin` |
-| Root Password | `minioadmin` |
-
-**Vai trò:** Lưu trữ ảnh snapshot khi AI Worker phát hiện lửa/khói. MinIO tương thích hoàn toàn với API của AWS S3 — code Java dùng AWS S3 SDK nhưng trỏ vào MinIO thay vì cloud.
-
-**Luồng ảnh:**
-```
-AI Worker phát hiện lửa
-    → Crop frame → Upload ảnh lên MinIO (port MINIO_API_PORT)
-    → Nhận lại URL: http://localhost:<MINIO_API_PORT>/snapshots/cam-001/...
-    → Gửi URL này kèm theo payload POST /api/v1/alerts
-    → Spring Boot lưu URL vào cột image_url trong bảng alerts
-```
-
-**Console UI:** Truy cập `http://localhost:<MINIO_CONSOLE_PORT>` để quản lý bucket, xem/tải file ảnh. Dùng `minioadmin/minioadmin`.
-
-**Lệnh khởi động container:** `server /data --console-address ":9001"` — chạy MinIO server lưu data vào `/data` và mở console trên port 9001.
-
-**Volume:** `minio_data` — ảnh snapshot được lưu persistent, không mất khi restart.
-
-**Kết nối từ Spring Boot** (trong `application.yml`):
-```yaml
-minio.endpoint: http://localhost:<MINIO_API_PORT>
-minio.access-key: minioadmin
-minio.secret-key: minioadmin
-minio.bucket: snapshots
-```
-
----
-
-## 📊 Monitoring MVP
-
-Giai đoạn 7 dùng `monitoring-service/` riêng để scrape metrics và trả JSON cho Dashboard UI (`/`), không dùng Grafana trong local MVP:
-
-- Backend export nhẹ: `/actuator/prometheus` cho JVM/API metrics và `/api/v1/metrics/export` cho alert/camera business aggregates.
-- AI Worker export nhẹ: `/metrics` dạng Prometheus text cho worker/source/camera runtime counters.
-- Monitoring service ping/scrape Backend, AI Worker, Redis, RabbitMQ, MinIO và host system metrics rồi trả `/api/dashboard/metrics`.
-- Frontend Dashboard đọc `NEXT_PUBLIC_MONITORING_URL`, vẽ cards/charts trực tiếp trong UI.
-- Prometheus/Grafana container được defer cho production nếu cần dashboard ngoài app.
-
----
-
-## 🔧 Dev Tool Services
-
-### 5. `adminer` — Web UI cho MariaDB
-
-| Thuộc tính | Giá trị |
-|---|---|
-| Image | `adminer:4.8.1` |
-| Container | `firesafe-adminer` |
-| Port | Runtime `ADMINER_PORT` → container `8080` (manual default `8081`) |
-| UI | `http://localhost:<ADMINER_PORT>` |
-
-**Cách kết nối:**
-1. Mở `http://localhost:<ADMINER_PORT>`
-2. Chọn **System:** `MySQL`
-3. **Server:** `firesafe-mariadb` *(tên container — đã được điền sẵn qua `ADMINER_DEFAULT_SERVER`)*
-4. **Username:** `firesafe` | **Password:** `firesafe` | **Database:** `firesafe`
-5. Click **Login**
-
-
-
-`depends_on: mariadb (service_healthy)` — Adminer chỉ start sau khi MariaDB healthy.
-
----
-
-### 6. `redisinsight` — Web UI cho Redis
-
-| Thuộc tính | Giá trị |
-|---|---|
-| Image | `redis/redisinsight:latest` |
-| Container | `firesafe-redisinsight` |
-| Port | Runtime `REDISINSIGHT_PORT` → container `5540` (manual default `5540`) |
-| UI | `http://localhost:<REDISINSIGHT_PORT>` |
-
-**Cách kết nối:**
-1. Mở `http://localhost:<REDISINSIGHT_PORT>`
-2. Click **Add Redis Database**
-3. **Host:** `firesafe-redis` | **Port:** `6379`
-4. Click **Add Redis Database**
-
-**Xem key debounce trong RedisInsight:** Vào **Browser** → tìm key `alert:debounce:*` → xem TTL còn lại.
-
-**Volume:** `redisinsight_data` — lưu cấu hình connection để không phải nhập lại sau mỗi restart.
+`/api/dashboard/metrics` được cache trong Redis bằng key ngắn hạn, TTL mặc định `MONITORING_CACHE_TTL_SECONDS=2`. Mục tiêu là giảm scrape lặp từ nhiều dashboard/browser nhưng vẫn đủ gần realtime cho UI và cơ chế chặn mở thêm camera preview khi tải hệ thống ≥ 80%.
 
 ---
 
@@ -275,40 +205,66 @@ Giai đoạn 7 dùng `monitoring-service/` riêng để scrape metrics và trả
 
 ```yaml
 volumes:
-  mariadb_data:       # Lưu data MariaDB
-  minio_data:         # Lưu ảnh snapshot MinIO
-  redisinsight_data:  # Lưu config kết nối RedisInsight
+  mariadb_data:        # DB data
+  minio_data:          # Snapshot object storage
+  redisinsight_data:   # RedisInsight config
+  ai_worker_models:    # Hugging Face best.pt cache
 ```
 
-Data tồn tại ngay cả khi container bị xóa, chỉ mất khi chạy `docker compose down -v`.
+Data tồn tại sau restart/container recreate; mất khi chạy `docker compose down -v`.
 
 ---
 
-## 🔍 Tại sao không có Backend/Frontend/AI Worker trong file này?
+## ✅ Smoke checks
 
-File này cố tình **chỉ** bao gồm infrastructure Docker. Backend, Frontend và AI Worker chạy trực tiếp trên host qua runtime manager vì:
+```powershell
+docker compose config --quiet
+docker compose up --build -d
+Invoke-WebRequest http://localhost:3000/health -UseBasicParsing
+Invoke-RestMethod http://localhost:3000/actuator/health
+Invoke-RestMethod http://localhost:3000/worker/health
+Invoke-RestMethod http://localhost:3000/monitoring/health
+Invoke-RestMethod http://localhost:3000/api/dashboard/metrics
+```
 
-1. **Hot-reload:** Khi dev, bạn liên tục sửa code. Chạy Spring Boot/Next.js trên host cho phép reload nhanh, còn trong Docker phải rebuild image nhiều hơn.
-2. **Debug:** Attach debugger/log vào process host dễ hơn remote debug trong container.
-3. **Runtime linh hoạt:** `setup.ps1`/`setup.sh` quản lý backend/frontend/AI Worker bằng PID files, port động và log riêng; Docker Compose chỉ giữ DB/cache/queue/storage/dev UI.
+```bash
+docker compose config --quiet
+docker compose up --build -d
+curl http://localhost:3000/health
+curl http://localhost:3000/actuator/health
+curl http://localhost:3000/worker/health
+curl http://localhost:3000/monitoring/health
+curl http://localhost:3000/api/dashboard/metrics
+```
 
-File `docker-compose.yml` production sau này sẽ bao gồm toàn bộ service: Nginx, Frontend, Backend, AI Worker và infrastructure.
+App entrypoint local: `http://localhost:3000`.
+App entrypoint LAN: `http://<IP-máy-host>:3000` khi `APP_BIND_ADDRESS=0.0.0.0` và firewall cho phép inbound TCP 3000. Windows cần mở firewall bằng PowerShell Admin nếu máy khác trong LAN không truy cập được:
+
+```powershell
+New-NetFirewallRule -DisplayName "FireSafe UI LAN TCP 3000" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 3000 -Profile Private
+```
+
+Adminer: `http://localhost:7001`.
+MinIO Console: `http://localhost:7002`.
+RedisInsight: `http://localhost:7003`.
+RabbitMQ UI: `http://localhost:7004`.
+MariaDB: `localhost:7005`.
+MinIO API: `http://localhost:7006`.
+Redis: `localhost:7007`.
+RabbitMQ AMQP: `localhost:7008`.
 
 ---
 
-## 📊 Tóm tắt nhanh
+## ⚠️ Chưa phải production hardening đầy đủ
 
-| Service | Port mặc định | UI mặc định | Mục đích |
-|---|---|---|---|
-| MariaDB | `3306` / runtime `MARIADB_PORT` | Adminer | Database chính |
-| Redis | `6379` / runtime `REDIS_PORT` | RedisInsight | Debounce alert (cache TTL) |
-| RabbitMQ | `5672` / runtime `RABBITMQ_PORT` | `RABBITMQ_UI_PORT` (`guest/guest`) | Message queue async notification |
-| MinIO | `9000` / runtime `MINIO_API_PORT` | `MINIO_CONSOLE_PORT` (`minioadmin/minioadmin`) | Lưu ảnh snapshot |
-| Adminer | `8081` / runtime `ADMINER_PORT` | `http://localhost:<ADMINER_PORT>` | Web UI quản lý MariaDB |
-| RedisInsight | `5540` / runtime `REDISINSIGHT_PORT` | `http://localhost:<REDISINSIGHT_PORT>` | Web UI quản lý Redis |
+Compose Phase 8 phục vụ containerization/shadow testing. Chưa bao gồm:
 
-Port thực tế luôn ưu tiên xem trong `.runtime/ports.env` sau khi chạy runtime manager `up`.
+- TLS/domain gateway production
+- secrets manager
+- backup/restore policy
+- resource limits/SLO alert policy
+- GPU runtime auto-config
 
 ---
 
-*Tài liệu phản ánh trạng thái `docker-compose.dev.yml`, `setup.ps1` và `setup.sh` tại **Giai đoạn 7**. Infrastructure dev chạy bằng Docker Compose; backend/frontend/AI Worker/Monitoring service chạy trên host qua runtime manager. File `docker-compose.yml` production sẽ bổ sung ở Giai đoạn 8.*
+*Tài liệu phản ánh trạng thái infrastructure tại **Giai đoạn 8**. Native dev vẫn dùng `setup.ps1`/`setup.sh` + `docker-compose.dev.yml`; container runtime dùng root `.env` + `docker-compose.yml` full stack.*

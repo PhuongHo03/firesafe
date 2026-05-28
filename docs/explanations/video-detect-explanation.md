@@ -32,7 +32,7 @@ Khác với `ai-worker/`:
 | `video-detect/` | Debug offline với video/image local |
 | `ai-worker/` | Service HTTP đọc RTSP, stream MJPEG preview, upload MinIO, POST alert backend |
 
-`video-detect/` không phụ thuộc runtime chính. Có thể chạy riêng nếu có Python, dependencies và model `.pt`.
+`video-detect/` không phụ thuộc runtime chính và không nằm trong `docker-compose.yml`. Có thể chạy riêng nếu có Python, dependencies và model `.pt`; Docker Compose chỉ chạy AI Worker realtime trong `ai-worker/`.
 
 ---
 
@@ -212,4 +212,4 @@ Không dùng để:
 
 ---
 
-*Tài liệu phản ánh trạng thái video-detect tại **Giai đoạn 6**. Công cụ này là CLI debug offline, tách khỏi AI Worker RTSP service chính.*
+*Tài liệu phản ánh trạng thái video-detect tại **Giai đoạn 8**. Công cụ này vẫn là CLI debug offline, tách khỏi Worker RTSP service chính và không nằm trong Docker Compose runtime.*

@@ -11,6 +11,11 @@ import requests
 from minio import Minio
 from redis import Redis
 
+HOST_PROC = os.getenv("HOST_PROC")
+HOST_ROOT = os.getenv("HOST_ROOT")
+if HOST_PROC:
+    psutil.PROCFS_PATH = HOST_PROC
+
 
 class MonitoringHandler(BaseHTTPRequestHandler):
     server_version = "FireSafeMonitoring/0.1"
@@ -63,12 +68,16 @@ class MonitoringServer(ThreadingHTTPServer):
         self.minio_secret_key = args.minio_secret_key
         self.minio_bucket = args.minio_bucket
         self.timeout = args.timeout
+        self.cache_ttl_seconds = args.cache_ttl_seconds
 
     def collect(self) -> dict:
+        cached = self._cache_get("firesafe:dashboard:metrics")
+        if cached:
+            return cached
         backend_business = self._backend_business_metrics()
         backend_prom = self._backend_prometheus_metrics()
         ai_metrics = self._ai_worker_metrics()
-        return {
+        payload = {
             "generatedAt": datetime.now(timezone.utc).isoformat(),
             "backend": backend_prom,
             "aiWorker": ai_metrics,
@@ -81,6 +90,23 @@ class MonitoringServer(ThreadingHTTPServer):
             "alerts": backend_business.get("alerts", self._empty_alerts()),
             "cameras": backend_business.get("cameras", {"total": 0, "active": 0}),
         }
+        self._cache_set("firesafe:dashboard:metrics", payload)
+        return payload
+
+    def _cache_get(self, key: str) -> dict | None:
+        try:
+            client = Redis(host=self.redis_host, port=self.redis_port, socket_timeout=self.timeout, decode_responses=True)
+            value = client.get(key)
+            return json.loads(value) if value else None
+        except Exception:
+            return None
+
+    def _cache_set(self, key: str, payload: dict):
+        try:
+            client = Redis(host=self.redis_host, port=self.redis_port, socket_timeout=self.timeout, decode_responses=True)
+            client.setex(key, self.cache_ttl_seconds, json.dumps(payload))
+        except Exception:
+            pass
 
     def _get_json(self, url: str) -> dict:
         response = requests.get(url, timeout=self.timeout)
@@ -233,6 +259,8 @@ def cpu_percent() -> float:
 
 
 def system_root_path() -> str:
+    if HOST_ROOT:
+        return HOST_ROOT
     drive, _ = os.path.splitdrive(os.getcwd())
     return f"{drive}\\" if drive else "/"
 
@@ -263,6 +291,7 @@ def parse_args():
     parser.add_argument("--minio-secret-key", default=os.getenv("MINIO_SECRET_KEY", "minioadmin"))
     parser.add_argument("--minio-bucket", default=os.getenv("MINIO_BUCKET", "snapshots"))
     parser.add_argument("--timeout", type=float, default=2.0)
+    parser.add_argument("--cache-ttl-seconds", type=int, default=int(os.getenv("MONITORING_CACHE_TTL_SECONDS", "2")))
     return parser.parse_args()
 
 

@@ -7,7 +7,7 @@ def validate_model_path(model_path: Path):
     if not model_path.exists():
         raise FileNotFoundError(
             f"Model not found: {model_path}\n"
-            "Place wildfire-smoke-fire.pt or best.pt under ai-worker/models/, or pass --model."
+            "Place best.pt under ai-worker/models/, or pass --model."
         )
 
 

@@ -9,8 +9,8 @@
 ```
 ai-worker/
 ├── service.py                         ← HTTP service: RTSP preview + start/stop detection
-├── requirements.txt                   ← Dependencies: ultralytics, opencv-python, requests, minio
-├── models/                            ← Đặt wildfire-smoke-fire.pt hoặc best.pt tại đây
+├── requirements.txt                   ← Dependencies: CPU-only torch/torchvision, ultralytics, opencv-python, requests, minio
+├── models/                            ← Đặt best.pt tại đây
 └── src/
     ├── __init__.py
     ├── camera_worker.py               ← Shared RTSP reader + YOLO detect thread + sustained alert cooldown
@@ -53,24 +53,59 @@ CLI debug video/image local đã tách sang `video-detect/`. Luồng này chạy
 | Thuộc tính | Giá trị |
 |---|---|
 | Framework | Ultralytics YOLO / PyTorch |
-| Weight file | `.pt`: ưu tiên `wildfire-smoke-fire.pt`, fallback `best.pt` trong Python service |
+| Weight file | `.pt`: mặc định `best.pt` trong Python service |
 | Classes kỳ vọng | `smoke`, `fire` |
 | Input điển hình | RGB image/video, 640x640 |
 
-Đặt model tại một trong hai path:
+Đặt model mặc định tại:
 
 ```powershell
-ai-worker\models\wildfire-smoke-fire.pt
 ai-worker\models\best.pt
 ```
 
-Khi không truyền `--model`, Python service chọn `wildfire-smoke-fire.pt` trước; nếu không có thì fallback sang `best.pt`. Runtime manager `up` không tự chọn model nữa, chỉ gọi service và để Python xử lý fallback. Nếu thiếu cả hai model, `src/detector.py` báo lỗi rõ trong `.runtime/logs/ai-worker.log`. Muốn dùng `best.pt` hoặc model `.pt` khác thì truyền `--model`, ví dụ `--model ./models/best.pt` hoặc `--model ./models/custom.pt`.
+Khi không truyền `--model`, Python service dùng `models/best.pt`. Nếu thiếu model, `src/detector.py` báo lỗi rõ trong `.runtime/logs/ai-worker.log`. Muốn dùng model `.pt` khác thì truyền `--model`, ví dụ `--model ./models/custom.pt`.
+
+Docker image cài PyTorch CPU-only (`torch==2.4.1+cpu`, `torchvision==0.19.1+cpu`) trước `ultralytics` để tránh pip kéo CUDA wheels rất lớn trong CPU-default container.
+
+---
+
+## 🚀 Cách chạy bằng Docker Compose
+
+Workflow chính Giai đoạn 8 chạy AI Worker trong `docker-compose.yml`:
+
+```powershell
+Copy-Item .env.example .env
+# chỉnh .env nếu cần
+docker compose up --build -d
+```
+
+```bash
+cp .env.example .env
+# chỉnh .env nếu cần
+docker compose up --build -d
+```
+
+Trong Compose, `worker` chạy nội bộ tại `worker:8090`, không publish trực tiếp ra host. Browser gọi qua Nginx:
+
+```text
+http://localhost:<FRONTEND_PORT>/api/cameras/...
+http://localhost:<FRONTEND_PORT>/worker/health
+```
+
+Mặc định:
+
+```text
+http://localhost:3000/cameras
+http://localhost:3000/worker/health
+```
+
+Worker container tự tải/cache `best.pt` vào Docker volume `ai_worker_models` nếu `/app/models/best.pt` chưa tồn tại. URL tải mặc định lấy từ root `.env` qua `AI_MODEL_URL`; nếu cần Hugging Face private token thì set `HF_TOKEN`.
 
 ---
 
 ## 🚀 Cách chạy bằng runtime manager
 
-Từ project root:
+Dùng khi cần chạy AI Worker host-process để debug native:
 
 ```powershell
 .\setup.ps1 up
@@ -102,7 +137,7 @@ Get-Content .runtime\ports.env
 cat .runtime/ports.env
 ```
 
-AI Worker health:
+AI Worker health native:
 
 ```text
 http://localhost:<AI_WORKER_PORT>/health
@@ -138,7 +173,7 @@ python3 -m venv venv
 |---|---:|---|---|
 | `--host` | Không | `127.0.0.1` | Host bind service |
 | `--port` | Không | `8090` | Port HTTP service |
-| `--model` | Không | `models/wildfire-smoke-fire.pt`, fallback `models/best.pt` | Path model YOLO `.pt`; nếu truyền cờ này thì dùng đúng path đó và không fallback |
+| `--model` | Không | `models/best.pt` | Path model YOLO `.pt`; nếu truyền cờ này thì dùng đúng path đó |
 | `--conf` | Không | `AI_WORKER_CONF` trong `ai-worker/.env.local`, fallback `0.25` | Ngưỡng confidence |
 | `--backend-url` | Không | `http://localhost:8080` | Backend API base URL |
 | `--username` | Không | `admin` | User backend để login |
@@ -153,6 +188,7 @@ python3 -m venv venv
 | `--rtsp-transports` | Không | `AI_WORKER_RTSP_TRANSPORTS`, fallback `default,udp,tcp` | Thứ tự thử RTSP transport; `default` là không ép FFmpeg |
 | `--rtsp-buffer-size` | Không | `AI_WORKER_RTSP_BUFFER_SIZE`, fallback `1` | OpenCV capture buffer size; `0` để bỏ qua |
 | `--overlay-ttl-seconds` | Không | `AI_WORKER_OVERLAY_TTL_SECONDS`, fallback `2.0` | Số giây giữ bbox detect trên preview live |
+| `AI_WORKER_STATUS_CACHE_TTL_SECONDS` | Không | `1.0` | TTL cache snapshot cho `/api/cameras/{id}/status` |
 | `--sustained-detection-seconds` | Không | `AI_WORKER_SUSTAINED_DETECTION_SECONDS`, fallback `3.0` | Số giây fire/smoke phải duy trì trước khi gửi alert |
 
 ---
@@ -166,7 +202,7 @@ python3 -m venv venv
 | `/metrics` | GET | Prometheus text metrics cho monitoring-service: worker/source/camera counters và inference avg |
 | `/api/cameras/start` | POST | Start worker cho camera; body tối thiểu `{ cameraId, rtspUrl }` |
 | `/api/cameras/stop` | POST | Stop worker theo `cameraId` |
-| `/api/cameras/{id}/status` | GET | Trả trạng thái `{ cameraId, running, error, lastAlertAt, hasFrame }` |
+| `/api/cameras/{id}/status` | GET | Trả trạng thái `{ cameraId, running, error, lastAlertAt, hasFrame }`; cache snapshot ngắn mặc định 1 giây |
 | `/api/cameras/{id}/stream.mjpg` | GET | MJPEG stream cho frontend render bằng `<img>` |
 
 Nếu bấm Start nhiều lần cho cùng camera, service trả status worker đang có và không tạo thêm RTSP session. Nếu nhiều camera dùng cùng `rtspUrl`, service chỉ mở một RTSP capture rồi chia sẻ frame cho các detector/preview tương ứng. Với URL Hikvision dạng `.../Streaming/Channels/*01`, nếu mainstream không mở được thì AI Worker tự thử substream `*02` để tránh giới hạn băng thông/session của thiết bị.
@@ -227,10 +263,9 @@ Camera phải tồn tại trong DB trước khi bấm Start Detect trên trang `
 - AI Worker tránh mở trùng cùng một `rtspUrl` và tự fallback Hikvision mainstream `*01` sang substream `*02`; nếu thiết bị vẫn giới hạn mọi channel về 1 session thì phải tăng giới hạn trên thiết bị/NVR.
 - Alert dùng sustained detection + camera/zone cooldown nên không tạo alert riêng cho từng object trong cùng khung hình.
 - Chưa export ONNX/TensorRT.
-- Chưa expose metrics Prometheus.
 - Chưa benchmark false positive/false negative trên video thực tế.
 - AI Worker có cooldown cảnh báo cơ bản; backend Redis debounce vẫn là lớp chống spam chính.
 
 ---
 
-*Tài liệu phản ánh trạng thái ai-worker tại **Giai đoạn 7**. Phiên bản hiện tại là RTSP HTTP service host-process: preview MJPEG, YOLO detect realtime, upload MinIO, gửi alert thật về backend và export Prometheus metrics cho monitoring-service.*
+*Tài liệu phản ánh trạng thái ai-worker tại **Giai đoạn 8**. Phiên bản hiện tại là RTSP HTTP service host-process/containerizable Worker: preview MJPEG, YOLO detect realtime bằng `best.pt`, upload MinIO, gửi alert thật về backend và export Prometheus metrics cho monitoring-service.*

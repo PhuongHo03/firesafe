@@ -15,6 +15,7 @@ export default function CamerasPage() {
   const [admin, setAdmin] = useState(false);
   const [detectionStatus, setDetectionStatus] = useState<Record<number, CameraDetectionStatus>>({});
   const [busyCameraId, setBusyCameraId] = useState<number | null>(null);
+  const [previewCameraIds, setPreviewCameraIds] = useState<Set<number>>(() => new Set());
 
   useEffect(() => {
     setAdmin(isAdmin());
@@ -40,21 +41,28 @@ export default function CamerasPage() {
     }
 
     let cancelled = false;
+    let loadingStatuses = false;
     async function loadCurrentStatuses() {
-      const entries = await Promise.all(
-        cameras.map(async cam => {
-          try {
-            return [cam.id, await api.getCameraDetectionStatus(cam.id)] as const;
-          } catch {
-            return [cam.id, { cameraId: cam.id, running: false, error: "AI Worker chưa sẵn sàng" }] as const;
-          }
-        })
-      );
-      if (!cancelled) setDetectionStatus(Object.fromEntries(entries));
+      if (loadingStatuses) return;
+      loadingStatuses = true;
+      try {
+        const entries = await Promise.all(
+          cameras.map(async cam => {
+            try {
+              return [cam.id, await api.getCameraDetectionStatus(cam.id)] as const;
+            } catch {
+              return [cam.id, { cameraId: cam.id, running: false, error: "AI Worker chưa sẵn sàng" }] as const;
+            }
+          })
+        );
+        if (!cancelled) setDetectionStatus(Object.fromEntries(entries));
+      } finally {
+        loadingStatuses = false;
+      }
     }
 
     loadCurrentStatuses();
-    const timer = window.setInterval(loadCurrentStatuses, 5000);
+    const timer = window.setInterval(loadCurrentStatuses, 10000);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
@@ -64,6 +72,31 @@ export default function CamerasPage() {
   async function handleRefresh() {
     await reload();
     await loadStatuses();
+  }
+
+  async function showPreview(cameraId: number) {
+    try {
+      const metrics = await api.getDashboardMetrics();
+      const ramPct = metrics.system.ramTotalBytes > 0 ? (metrics.system.ramUsedBytes / metrics.system.ramTotalBytes) * 100 : 0;
+      const gpuPct = metrics.system.gpu.available ? metrics.system.gpu.utilPct : 0;
+      const loadPct = Math.max(metrics.system.cpuPct, ramPct, gpuPct);
+      if (loadPct >= 80) {
+        setError(`Hệ thống gần quá tải (${loadPct.toFixed(0)}%). Tạm thời không mở thêm preview.`);
+        return;
+      }
+      setPreviewCameraIds(prev => new Set(prev).add(cameraId));
+      setError("");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Không thể kiểm tra tải hệ thống");
+    }
+  }
+
+  function hidePreview(cameraId: number) {
+    setPreviewCameraIds(prev => {
+      const next = new Set(prev);
+      next.delete(cameraId);
+      return next;
+    });
   }
 
   async function handleAdd(e: FormEvent) {
@@ -98,6 +131,7 @@ export default function CamerasPage() {
     try {
       const status = await api.stopCameraDetection(cameraId);
       setDetectionStatus(prev => ({ ...prev, [cameraId]: status }));
+      hidePreview(cameraId);
       setError("");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Không thể stop AI Worker");
@@ -176,12 +210,22 @@ export default function CamerasPage() {
               const running = Boolean(status?.running);
               const hasWorker = Boolean(status && (status.running || status.error || status.hasFrame || status.lastAlertAt));
               const busy = busyCameraId === cam.id;
+              const previewing = previewCameraIds.has(cam.id);
 
               return (
                 <div key={cam.id} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.75rem", padding: "1.25rem", minWidth: 0 }}>
                   <div style={{ background: "#020617", border: "1px solid var(--border)", borderRadius: "0.6rem", aspectRatio: "16/9", overflow: "hidden", marginBottom: "1rem", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    {running ? (
-                      <img src={api.getCameraStreamUrl(cam.id)} alt={`Live ${cam.name}`} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+                    {running && previewing ? (
+                      <div style={{ position: "relative", width: "100%", height: "100%" }}>
+                        <img src={api.getCameraStreamUrl(cam.id)} alt={`Live ${cam.name}`} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+                        <button type="button" onClick={() => hidePreview(cam.id)} style={{ position: "absolute", top: "0.5rem", right: "0.5rem", ...btnStyle, background: "rgba(15,23,42,0.85)", color: "#fff", padding: "0.35rem 0.75rem" }}>
+                          Ẩn preview
+                        </button>
+                      </div>
+                    ) : running ? (
+                      <button type="button" onClick={() => showPreview(cam.id)} style={{ ...btnStyle, background: "var(--surface-2)", color: "var(--text)" }}>
+                        Xem preview
+                      </button>
                     ) : (
                       <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>Preview chưa chạy</span>
                     )}

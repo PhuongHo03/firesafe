@@ -1,5 +1,6 @@
 # Runtime
 .runtime/
+.claude/
 logs/
 *.log
 

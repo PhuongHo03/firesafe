@@ -9,6 +9,7 @@ backend/
 │
 ├── .env.local.example               ← Mẫu env preset camera RTSP khi chạy từ source
 ├── .env.local                       ← Env local/private: RTSP preset, không commit
+├── Dockerfile                       ← Build Spring Boot image cho Docker Compose
 ├── pom.xml                          ← Khai báo dependencies, build config (Maven)
 ├── mvnw / mvnw.cmd                  ← Maven Wrapper — chạy Maven không cần cài trên máy
 │
@@ -91,7 +92,39 @@ backend/
 
 ## 🚀 Cách chạy
 
-Cách chính từ project root:
+### Docker Compose full stack — workflow chính Giai đoạn 8
+
+Từ project root:
+
+```powershell
+Copy-Item .env.example .env
+# chỉnh .env nếu cần
+docker compose up --build -d
+```
+
+```bash
+cp .env.example .env
+# chỉnh .env nếu cần
+docker compose up --build -d
+```
+
+Trong Docker Compose, backend chạy nội bộ tại `backend:8080` và **không publish trực tiếp ra host**. Browser/API client đi qua Nginx app entrypoint:
+
+```text
+http://localhost:<FRONTEND_PORT>/api/v1/...
+http://localhost:<FRONTEND_PORT>/swagger-ui.html
+http://localhost:<FRONTEND_PORT>/actuator/health
+```
+
+Mặc định `FRONTEND_PORT=3000`, nên Swagger qua Docker là:
+
+```text
+http://localhost:3000/swagger-ui.html
+```
+
+### Native dev runtime
+
+Dùng khi cần chạy backend trên host để debug nhanh:
 
 ```powershell
 .\setup.ps1 up
@@ -111,7 +144,13 @@ Get-Content .runtime\ports.env
 cat .runtime/ports.env
 ```
 
-Nếu chạy thủ công:
+Khi dùng runtime manager `up`, backend thường là `http://localhost:<BACKEND_PORT>` và Swagger là:
+
+```text
+http://localhost:<BACKEND_PORT>/swagger-ui.html
+```
+
+### Chạy thủ công backend từ source
 
 ```powershell
 docker compose -f docker-compose.dev.yml up -d
@@ -125,24 +164,10 @@ cd backend
 ./mvnw spring-boot:run
 ```
 
-Backend mặc định chạy tại:
+Mặc định chạy tại:
 
 ```text
 http://localhost:8080
-```
-
-Khi dùng runtime manager `up`, backend có thể chạy ở `http://localhost:<BACKEND_PORT>` nếu port mặc định bận.
-
-Swagger UI:
-
-```text
-http://localhost:<BACKEND_PORT>/swagger-ui.html
-```
-
-Ví dụ nếu backend chạy ở port 8080:
-
-```text
-http://localhost:8080/swagger-ui.html
 ```
 
 ---
@@ -280,7 +305,7 @@ Tạo toàn bộ 5 bảng và các index tối ưu query:
 | `alerts` | Lịch sử sự kiện phát hiện lửa/khói |
 
 #### `V2__seed_data.sql`
-Chèn dữ liệu ban đầu: 2 roles (`ROLE_ADMIN`, `ROLE_VIEWER`) và 1 admin user (password: `admin123` — BCrypt hashed).
+Chèn dữ liệu ban đầu: roles hệ thống và 1 admin user `admin@nhattienchung.vn` / `admin123` (BCrypt hashed), active sẵn để đăng nhập qua rule domain hiện tại.
 
 ---
 
@@ -502,7 +527,7 @@ RegisterRequest(username,email,password)
 - Tất cả còn lại → Cần token
 - Session: `STATELESS` (không dùng session — JWT là stateless)
 - CSRF: disabled (không cần với REST API + JWT)
-- CORS dev cho `http://localhost:3000` và `http://localhost:3001`
+- CORS dev/LAN cho `localhost`, `127.0.0.1` và private LAN origins (`192.168.*.*`, `10.*.*.*`, `172.16–31.*.*`) để người dùng cùng mạng truy cập UI qua `http://<IP-máy-host>:3000` vẫn login/register/API được
 
 #### `RabbitMQConfig.java`
 Khai báo topology RabbitMQ:
@@ -573,4 +598,4 @@ Bắt exception từ bất kỳ đâu → chuyển thành HTTP response chuẩn 
 
 ---
 
-*Tài liệu phản ánh trạng thái backend tại **Giai đoạn 7**. Backend đã hỗ trợ login/register viewer-pending-activation với email `@nhattienchung.vn`, RBAC `ADMIN/VIEWER`, admin user activation/role editing, preset RTSP camera từ env, alert ingestion từ AI Worker, Redis debounce, RabbitMQ notification, MinIO snapshot URLs và metrics export nhẹ cho monitoring-service.*
+*Tài liệu phản ánh trạng thái backend tại **Giai đoạn 8**. Backend đã hỗ trợ login/register viewer-pending-activation với email `@nhattienchung.vn`, RBAC `ADMIN/VIEWER`, admin user activation/role editing, preset RTSP camera từ env, alert ingestion từ Worker, Redis debounce, RabbitMQ notification, MinIO snapshot URLs, metrics export nhẹ cho monitoring-service và Dockerfile cho Compose full stack.*
