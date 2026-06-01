@@ -16,18 +16,19 @@
 ## 🔜 Việc tiếp theo cần làm (Giai đoạn 8)
 
 - [x] Chuẩn hóa AI Worker dùng `best.pt` mặc định, bỏ fallback `wildfire-smoke-fire.pt`
-- [x] Tạo Dockerfiles cho backend, frontend, worker, monitoring-service
-- [x] Tạo `docker-compose.yml` full stack: app services + infra + Adminer + RedisInsight
+- [x] Tạo Dockerfiles cho backend, frontend, worker
+- [x] Tạo `docker-compose.yml` full stack: app services + infra + Adminer + RedisInsight + Prometheus/exporters
 - [x] Tạo root `.env.example` cho Compose; Docker users chỉ cần `.env` ở root
 - [x] Worker Docker tự tải/cache `best.pt` từ Hugging Face vào Docker volume
-- [x] Monitoring Docker cấu hình Linux-only host metrics qua mounted `/proc`, `/sys`, `/`
-- [x] Runtime smoke test `docker compose up --build -d` và mở `/`, `/api/dashboard/metrics`
-- [x] Bổ sung Nginx reverse proxy cho Docker Compose: một app entrypoint, same-origin API, route `/api/v1/`, `/api/cameras/`, `/api/dashboard/metrics`
-- [x] Ẩn host ports trực tiếp của `frontend`, `backend`, `worker`, `monitoring-service`; chỉ publish Nginx, infra UI/API ports
-- [x] Quy hoạch default ports Compose theo runtime manager: app qua Nginx `3000`, infra `7001–7008`
-- [x] Smoke test sau Nginx: health, frontend, backend, worker, monitoring, dashboard metrics qua same-origin
+- [x] Prometheus Docker scrape Backend/AI Worker/exporters; node-exporter đọc host/container metrics qua mounted rootfs
+- [x] Runtime smoke test `docker compose up --build -d` và mở `/`, `/prometheus/-/healthy`, `/prometheus/api/v1/query?query=up`
+- [x] Bổ sung Nginx reverse proxy cho Docker Compose: một app entrypoint, same-origin API, route `/api/v1/`, `/api/cameras/`, `/prometheus/api/v1/`
+- [x] Ẩn host ports trực tiếp của `frontend`, `backend`, `worker`, `prometheus` và exporters; chỉ publish Nginx, infra UI/API ports
+- [x] Quy hoạch default ports Compose theo runtime manager: app qua Nginx `3000`, infra `7001–7010`
+- [x] Smoke test sau Nginx: health, frontend, backend, worker, Prometheus health/query qua same-origin
 - [x] Thêm cơ chế chặn mở thêm camera preview khi hệ thống gần quá tải (CPU/RAM/GPU ≥ 80%) và hiển thị cảnh báo trên UI
-- [x] Cache ngắn dashboard metrics trong Redis (`MONITORING_CACHE_TTL_SECONDS`, mặc định 2 giây)
+- [x] Frontend cache ngắn dashboard metrics Prometheus query trong memory (3 giây)
+- [x] Dashboard metrics đọc Prometheus trực tiếp qua Nginx; infra cards dùng exporter metrics khi có, còn thiếu thì fallback `0`/`UNKNOWN`/`N/A`
 - [x] Cache snapshot trạng thái camera trong RAM AI Worker (`AI_WORKER_STATUS_CACHE_TTL_SECONDS`, mặc định 1 giây)
 - [ ] Shadow testing thực địa: uptime, latency end-to-end, false positive/negative
 - [ ] Chuẩn bị checklist chuyển sang Giai đoạn 9: hardening, TLS/domain, backup/restore, observability production, image registry/release flow
@@ -38,7 +39,7 @@
 - [x] Tải model `.pt` vào `ai-worker/models/`
 - [x] Chạy thử với video local và kiểm tra output bounding box
 - [x] Mở rộng AI Worker thành module nhỏ + hỗ trợ upload MinIO + `POST /api/v1/alerts`
-- [x] Thêm runtime manager `setup.ps1` (Windows) và `setup.sh` (Linux) để quản lý runtime local, tự chọn port trống, cấp port infra từ dải `7001+`, logs capped 50 dòng cuối/file và `.runtime/ports.env`; `up` tự chuẩn bị deps/env, `down` chỉ dừng runtime đã xác thực PID metadata và xóa `.runtime/`, `clean` xóa thêm generated artifacts + Docker volume/orphan thuộc compose project, không xóa shared images
+- [x] Loại bỏ runtime manager native (`setup.ps1`, `setup.sh`) để chuẩn hóa runtime chính qua `docker-compose.yml`
 - [x] Chạy E2E thật với AI Worker service, backend, MinIO, Redis, RabbitMQ
 - [x] Mở rộng sang RTSP camera preview + detect realtime trên UI `/cameras`
 - [x] Tách CLI video local sang `video-detect/`, không backend/MinIO/auth/alert
@@ -46,11 +47,11 @@
 - [x] AI Worker chia sẻ một RTSP capture cho nhiều camera dùng cùng `rtspUrl`, tránh mở trùng session vào camera/NVR
 - [x] AI Worker tự fallback Hikvision mainstream `*01` sang substream `*02` khi mở RTSP fail, giúp nhiều channel chạy song song nhẹ hơn
 - [x] AI Worker preview MJPEG luôn cập nhật frame mới, bbox realtime-ish theo TTL, alert theo sustained detection + camera/zone cooldown
-- [x] Khởi tạo `monitoring-service/` scrape/aggregate metrics riêng cho Dashboard UI
-- [x] Backend export metrics nhẹ qua `/actuator/prometheus` và `/api/v1/metrics/export`
+- [x] Thay `monitoring-service/` bằng Prometheus + exporters; frontend query Prometheus API qua Nginx
+- [x] Backend export metrics qua `/actuator/prometheus`; `/api/v1/metrics/export` giữ cho business metrics legacy/migration
 - [x] AI Worker export Prometheus text metrics qua `/metrics`
-- [x] Runtime manager start/stop monitoring-service, cấp `MONITORING_PORT`, ghi `NEXT_PUBLIC_MONITORING_URL`
-- [x] Dashboard UI hiển thị CPU/GPU/RAM/disk/API/Redis/RabbitMQ/MinIO/alerts/AI Worker metrics; CPU/RAM/Disk lấy từ máy thật host qua `psutil`, GPU qua `nvidia-smi` nếu có
+- [x] Runtime manager bỏ monitoring-service, ghi `NEXT_PUBLIC_PROMETHEUS_URL` khi chạy native
+- [x] Dashboard UI hiển thị CPU/RAM/disk/API/Redis/RabbitMQ/MinIO/AI Worker metrics từ Prometheus; GPU/alert charts fallback nếu chưa có exporter/app metrics tương ứng
 
 ## ✅ Checklist bắt buộc SAU MỖI TASK
 
@@ -124,9 +125,7 @@ project-root/
 │   │   └── planning.md                    ← File này
 │   └── explanations/
 │       ├── backend-explanation.md         ← Giải thích toàn bộ backend/
-│       ├── infrastructure-explanation.md  ← Giải thích docker-compose.dev.yml + runtime manager
-│       ├── monitoring-service-explanation.md ← Giải thích monitoring-service/
-│       ├── mock-worker-explanation.md     ← Giải thích mock-worker/
+│       ├── infrastructure-explanation.md  ← Giải thích Docker Compose full stack + Nginx/Prometheus
 │       ├── frontend-explanation.md        ← Giải thích frontend/ (Next.js)
 │       ├── ai-worker-explanation.md       ← Giải thích ai-worker/ RTSP preview + YOLO detect realtime
 │       └── video-detect-explanation.md    ← Giải thích video-detect/ CLI debug offline
@@ -139,31 +138,24 @@ project-root/
 ├── backend/                               ← Spring Boot (Java 21, Maven)
 │   ├── Dockerfile
 │   ├── pom.xml
-│   └── src/...
+│   └── src/main/java/com/firesafe/backend/ ← strict layered packages: controllers/dtos/services/repositories/models/middlewares/configs/utils
 │
-├── mock-worker/                           ← Python E2E test suite độc lập (Giai đoạn 4)
-│   ├── mock_worker.py
-│   ├── requirements.txt
-│   ├── run-mock-worker.ps1
-│   └── run-mock-worker.sh
-│
-├── ai-worker/                             ← YOLO RTSP service chính (host process)
-│   ├── service.py                         ← HTTP API: start/stop/status/MJPEG stream/metrics
+├── ai-worker/                             ← YOLO RTSP service chính (Docker container)
 │   ├── Dockerfile                         ← Worker container image + model auto-download entrypoint
 │   ├── docker-entrypoint.sh               ← Tải/cache best.pt vào Docker volume nếu thiếu
 │   ├── requirements.txt
 │   ├── src/
-│   │   ├── camera_worker.py               ← RTSP reader thread + YOLO detector thread
-│   │   ├── backend_client.py              ← Login backend + POST alert
-│   │   ├── storage.py                     ← Upload snapshot MinIO
-│   │   ├── snapshot.py                    ← Encode frame PNG
-│   │   └── config.py                      ← Model path config
+│   │   ├── main.py                        ← Env/CLI + start HTTP server
+│   │   ├── controllers/                   ← HTTP routes/status/MJPEG/metrics
+│   │   ├── services/                      ← RTSP worker, YOLO detector, inference scheduler
+│   │   ├── repositories/                  ← Backend alert API + MinIO snapshot upload
+│   │   ├── configs/                       ← Model path config
+│   │   └── utils/                         ← Snapshot encode helper
 │   └── models/                            ← Native dev đặt best.pt nếu không truyền --model
 │
-├── monitoring-service/                    ← Scrape/aggregate metrics cho Dashboard UI
-│   ├── service.py
-│   ├── Dockerfile
-│   └── requirements.txt
+├── infra/
+│   ├── nginx/default.conf                  ← Nginx app gateway + Prometheus API proxy
+│   └── prometheus/prometheus.yml           ← Prometheus scrape config cho backend/worker/exporters
 │
 ├── video-detect/                          ← CLI debug video/image offline, tách khỏi AI Worker service
 │   ├── detect_video.py
@@ -176,29 +168,29 @@ project-root/
 │
 ├── frontend/                              ← Next.js 16 (TypeScript, Tailwind)
 │   ├── Dockerfile
-│   ├── src/app/
-│   │   ├── page.tsx                       ← Dashboard tổng quan (cards + 5 alert mới nhất)
-│   │   ├── login/page.tsx                 ← Trang đăng nhập
-│   │   ├── alerts/page.tsx                ← Danh sách alert đầy đủ + xóa từng alert/xóa tất cả
-│   │   ├── alerts/[id]/page.tsx           ← Chi tiết alert
-│   │   └── cameras/page.tsx              ← Quản lý camera
-│   ├── src/components/
-│   │   └── Sidebar.tsx                    ← Navigation sidebar
-│   ├── src/hooks/                         ← Custom hooks (logic state & fetch)
-│   │   ├── useAlerts.ts
-│   │   ├── useAlert.ts
-│   │   └── useCameras.ts
-│   ├── src/lib/
-│   │   ├── api.ts                         ← API client + types
+│   ├── src/app/                           ← App Router routes mỏng
+│   │   ├── page.tsx                       ← Route `/` → DashboardScreen
+│   │   ├── login/page.tsx                 ← Route `/login` → LoginScreen
+│   │   ├── register/page.tsx              ← Route `/register` → RegisterScreen
+│   │   ├── alerts/page.tsx                ← Route `/alerts` → AlertsScreen
+│   │   ├── alerts/[id]/page.tsx           ← Route `/alerts/[id]` → AlertDetailScreen
+│   │   ├── cameras/page.tsx               ← Route `/cameras` → CamerasScreen
+│   │   └── admin/users/page.tsx           ← Route `/admin/users` → AdminUsersScreen
+│   ├── src/features/                      ← Feature modules: api/components/dtos/hooks/screens/states/types theo nghiệp vụ
+│   │   ├── auth/
+│   │   ├── alerts/
+│   │   ├── cameras/
+│   │   ├── dashboard/
+│   │   ├── monitoring/
+│   │   └── admin-users/
+│   ├── src/layouts/
+│   │   └── Sidebar.tsx                    ← Navigation sidebar/app shell
+│   ├── src/shared/utils/
+│   │   ├── http.ts                        ← Shared HTTP request helpers/base URLs
 │   │   └── auth.ts                        ← JWT cookie helpers
-│   └── .env.local                         ← Auto-generated: NEXT_PUBLIC_API_URL + NEXT_PUBLIC_AI_WORKER_URL + NEXT_PUBLIC_MONITORING_URL
 │
 ├── .env.example                           ← Root env mẫu cho Docker Compose full stack
-├── docker-compose.yml                     ← Full stack Docker Compose cho Giai đoạn 8
-├── setup.ps1                              ← Runtime manager Windows: up/down/clean infra + backend + frontend + AI Worker + monitoring-service
-├── setup.sh                               ← Runtime manager Linux: up/down/clean infra + backend + frontend + AI Worker + monitoring-service
-└── docker-compose.dev.yml                 ← Infra-only dev compose: MariaDB, Redis, RabbitMQ,
-                                             MinIO, Adminer, RedisInsight
+└── docker-compose.yml                     ← Full stack Docker Compose cho Giai đoạn 9
 ```
 
 ---
@@ -207,26 +199,18 @@ project-root/
 
 | Service | URL / Port | Credentials |
 |---|---|---|
-| Spring Boot API | `http://localhost:<BACKEND_PORT>` | — |
-| Swagger UI | `http://localhost:<BACKEND_PORT>/swagger-ui.html` | JWT từ `admin@nhattienchung.vn` / `admin123` |
-| MariaDB | `localhost:<MARIADB_PORT>` | `firesafe` / `firesafe` / DB: `firesafe` |
-| Adminer (DB UI) | `http://localhost:<ADMINER_PORT>` | System: MySQL, Server: `mariadb`, user: `firesafe` |
-| Redis | `localhost:<REDIS_PORT>` | Không có auth |
-| RedisInsight | `http://localhost:<REDISINSIGHT_PORT>` | Host: `firesafe-redis`, port `6379` |
-| RabbitMQ | `localhost:<RABBITMQ_PORT>` | `guest` / `guest` |
-| RabbitMQ UI | `http://localhost:<RABBITMQ_UI_PORT>` | `guest` / `guest` |
-| MinIO API | `http://localhost:<MINIO_API_PORT>` | `minioadmin` / `minioadmin` |
-| MinIO Console | `http://localhost:<MINIO_CONSOLE_PORT>` | `minioadmin` / `minioadmin` |
-
-Port thực tế xem tại:
-
-```powershell
-Get-Content .runtime\ports.env
-```
-
-```bash
-cat .runtime/ports.env
-```
+| App/Nginx | `http://localhost:3000` | — |
+| Spring Boot API | `http://localhost:3000/api/v1` | — |
+| Swagger UI | `http://localhost:3000/swagger-ui.html` | JWT từ `admin@nhattienchung.vn` / `admin123` |
+| Prometheus API | `http://localhost:3000/prometheus/api/v1/query` | — |
+| MariaDB | `localhost:7005` | `firesafe` / `firesafe` / DB: `firesafe` |
+| Adminer (DB UI) | `http://localhost:7001` | System: MySQL, Server: `mariadb`, user: `firesafe` |
+| Redis | `localhost:7007` | Không có auth |
+| RedisInsight | `http://localhost:7003` | Host: `redis`, port `6379` |
+| RabbitMQ | `localhost:7008` | `guest` / `guest` |
+| RabbitMQ UI | `http://localhost:7004` | `guest` / `guest` |
+| MinIO API | `http://localhost:7006` | `minioadmin` / `minioadmin` |
+| MinIO Console | `http://localhost:7002` | `minioadmin` / `minioadmin` |
 
 ---
 
@@ -248,7 +232,7 @@ cat .runtime/ports.env
 | **API Gateway** | Nginx | Reverse proxy, SSL termination, route `/api/*` → Spring Boot, `/` → Next.js |
 | **Frontend** | Next.js (App Router) | Dashboard real-time, quản lý camera, login |
 | **Backend** | Spring Boot | Spring Web + Security + Data JPA + AMQP |
-| **Database** | MariaDB | Lưu trữ dữ liệu chính |
+| **Database** | MariaDB | Lưu trữ dữ liệu chính; toàn bộ runtime dùng timezone `ICT-7` (UTC+7) |
 | **Cache / Debounce** | Redis | Chống spam alert |
 | **Object Storage** | MinIO | Lưu ảnh snapshot (S3-compatible, tự host) |
 | **Broker** | RabbitMQ | Message queue gửi notification async |
@@ -274,7 +258,8 @@ cat .runtime/ports.env
 |---|---|---|---|
 | `POST` | `/api/v1/auth/login` | — | Đăng nhập bằng email `@nhattienchung.vn` + password để lấy JWT token |
 | `POST` | `/api/v1/auth/register` | — | Đăng ký viewer pending bằng email `@nhattienchung.vn`; cần Admin kích hoạt trước khi login |
-| `POST` | `/api/v1/alerts` | JWT Bearer | AI Worker gửi cảnh báo mới |
+| `POST` | `/api/v1/alerts/reservations` | JWT Bearer | AI Worker reserve Redis debounce slot trước khi upload snapshot |
+| `POST` | `/api/v1/alerts` | JWT Bearer | AI Worker tạo cảnh báo mới bằng `reservationToken` hợp lệ |
 | `GET` | `/api/v1/alerts` | JWT Bearer | Danh sách cảnh báo (phân trang) |
 | `GET` | `/api/v1/alerts/{id}` | JWT Bearer | Chi tiết một cảnh báo |
 | `DELETE` | `/api/v1/alerts` | JWT + ADMIN | Xóa tất cả cảnh báo, cleanup MinIO snapshot và Redis debounce |
@@ -285,13 +270,22 @@ cat .runtime/ports.env
 | `DELETE` | `/api/v1/cameras/{id}` | JWT + ADMIN | Xóa camera |
 | `GET` | `/api/v1/users` | JWT + ADMIN | Quản lý người dùng |
 
-**Payload mẫu AI Worker gửi về (`POST /api/v1/alerts`):**
+**Payload mẫu AI Worker reserve trước upload (`POST /api/v1/alerts/reservations`):**
+```json
+{
+  "cameraId": 1,
+  "label": "fire"
+}
+```
+
+**Payload mẫu AI Worker gửi về sau khi reserve thành công (`POST /api/v1/alerts`):**
 ```json
 {
   "cameraId": 1,
   "confidence": 0.91,
   "label": "fire",
   "imageUrl": "http://localhost:<MINIO_API_PORT>/snapshots/cam-001/...png",
+  "reservationToken": "<uuid>",
   "detectedAt": "2026-05-20T10:30:00"
 }
 ```
@@ -307,17 +301,17 @@ cat .runtime/ports.env
 
 **Những gì đã làm:**
 - Spring Boot 3.5 + Maven, Java 21
-- Flyway migrations: `V1__init_schema.sql` (5 bảng + indexes), `V2__seed_data.sql` (roles, admin mặc định; không seed camera fake)
+- Flyway migration: `V1__init_schema.sql` (5 bảng + indexes + roles + admin mặc định; không seed camera fake)
 - Entities: `User`, `Role`, `Camera`, `Alert` với JPA mapping đúng quan hệ
 - Repositories: `UserRepository`, `CameraRepository`, `AlertRepository` với pagination
 - JWT Security: `JwtUtils`, `JwtAuthFilter`, `UserDetailsServiceImpl`, `SecurityConfig`
-- Services: `AlertService` (Redis debounce + RabbitMQ publish), `CameraService` (CRUD), `NotificationWorker` (RabbitMQ consumer — placeholder)
+- Services: `AlertService` (Redis reserve/debounce trước upload + RabbitMQ publish), `CameraService` (CRUD), `NotificationWorker` (RabbitMQ consumer — placeholder)
 - Controllers: `AuthController`, `AlertController`, `CameraController` với role-based auth
 - DTOs: tách biệt hoàn toàn khỏi Entity
 - `GlobalExceptionHandler` — RFC 7807 ProblemDetail
 - `OpenApiConfig` — Swagger UI tại `/swagger-ui.html` với JWT Bearer scheme
 - `RabbitMQConfig` — khai báo Exchange, Queue, Binding
-- `docker-compose.dev.yml` với 6 service: MariaDB, Redis, RabbitMQ, MinIO, Adminer, RedisInsight
+- `docker-compose.yml` chạy full stack: app services, infra, Nginx, Prometheus/exporters
 
 **Lưu ý quan trọng:**
 - Default admin: `admin@nhattienchung.vn` / `admin123`
@@ -343,20 +337,13 @@ cat .runtime/ports.env
 
 ---
 
-### ✅ Giai đoạn 4 — Mock AI Worker & End-to-End Test *(Tuần 7)*
+### ✅ Giai đoạn 4 — Backend End-to-End Contract *(Tuần 7)*
 
 > **Trạng thái: HOÀN THÀNH**
-> **Context cho session mới:** Đọc [`docs/explanations/mock-worker-explanation.md`](../explanations/mock-worker-explanation.md).
 
 **Những gì đã làm:**
-- `mock-worker/mock_worker.py` — E2E test suite 5 test case:
-  - Test 1: JWT login (`admin@nhattienchung.vn`/`admin123`) → nhận token
-  - Test 2: `GET /api/v1/cameras` → lấy camera đầu tiên làm camera test
-  - Test 3: Tạo ảnh PNG giả bằng Pillow → upload MinIO → lấy URL
-  - Test 4: `POST /api/v1/alerts` → verify alert trong DB qua `GET /api/v1/alerts/{id}`
-  - Test 5: Gửi 10 alerts liên tiếp → verify Redis debounce (chỉ 1 notification)
-- Hỗ trợ chạy từng test riêng: `--test minio|pipeline|debounce`
-- Mock-worker chỉ chạy khi gọi runner `mock-worker/run-mock-worker.ps1` trên Windows, `mock-worker/run-mock-worker.sh` trên Linux hoặc chạy thủ công, không nằm trong luồng runtime manager `up`.
+- Xác nhận contract chính cho Frontend/AI Worker: auth JWT, camera list, MinIO snapshot URL, alert create/read, Redis debounce.
+- Mock-worker thử nghiệm cũ đã được loại bỏ khỏi source tree khi repo chuẩn hóa về runtime Docker Compose full stack.
 
 > ✅ **Checkpoint:** Backend là "hộp đen" hoàn chỉnh. Từ đây, Frontend và AI Worker chỉ cần tuân theo API Contract là tích hợp được.
 
@@ -369,10 +356,13 @@ cat .runtime/ports.env
 
 **Những gì đã làm:**
 - Khởi tạo Next.js 16 (TypeScript, Tailwind CSS, App Router) tại `frontend/`
-- Tách biệt UI (Component), Logic (Hooks) và Data (Services/lib).
-- `src/hooks/use*.ts` — Custom hooks quản lý state (loading, error, reload)
-- `src/lib/api.ts` — API client tập trung, typed interfaces Alert/Camera
-- `src/lib/auth.ts` — JWT lưu vào cookie (js-cookie), helpers `getToken()`, `isAdmin()`
+- Tách biệt UI (Screens/Components), Logic (Hooks), DTO mapping, state helpers và Data (feature API/shared utils) theo cấu trúc feature-based.
+- `src/app/**/page.tsx` — App Router route files mỏng, chỉ compose screen từ `src/features/*/screens`.
+- `src/features/*/components` — UI presentational dùng nội bộ từng feature.
+- `src/features/*/dtos` + `src/features/*/states` — form/request/view mapping, constants, state transition helpers theo nghiệp vụ.
+- `src/features/*/hooks` — Custom hooks quản lý state (loading, error, reload) theo nghiệp vụ.
+- `src/features/*/api` + `src/features/*/types` — API method/type theo từng feature; `src/shared/utils/http.ts` chỉ giữ shared request helpers/base URLs.
+- `src/shared/utils/auth.ts` — JWT lưu vào cookie (js-cookie), helpers `getToken()`, `isAdmin()
 - Fix lỗi SSR Hydration mismatch bằng `useEffect` trong `Sidebar`.
 - Thêm `spring-boot-devtools` cho Backend auto-reload.
 - **Trang Login** (`/login`) — form đăng nhập, lưu JWT, redirect về dashboard
@@ -382,7 +372,7 @@ cat .runtime/ports.env
 - **Alert Detail** (`/alerts/[id]`) — ảnh hiện trường, thông tin đầy đủ, xóa alert hiện tại
 - **Cameras** (`/cameras`) — card grid camera, thêm/xóa (chỉ ADMIN)
 - **Sidebar** — navigation chung, logout, hiển thị username/role
-- `frontend/.env.local` — được runtime manager `up` tự tạo từ port runtime: `NEXT_PUBLIC_API_URL` và `NEXT_PUBLIC_AI_WORKER_URL`
+- Frontend Docker image nhận `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_AI_WORKER_URL`, `NEXT_PUBLIC_PROMETHEUS_URL` qua Compose build args; mặc định để trống để dùng same-origin Nginx
 
 **Chạy frontend:**
 ```powershell
@@ -407,10 +397,9 @@ npm run dev   # http://localhost:3000
 - Tách AI Worker service thành các module: `config.py`, `camera_worker.py`, `detector.py`, `snapshot.py`, `storage.py`, `backend_client.py`.
 - `camera_worker.py` hiện tách shared RTSP reader cập nhật MJPEG preview liên tục và YOLO detector lấy frame mới nhất theo interval để detect/alert; nhiều camera dùng cùng `rtspUrl` sẽ reuse một capture, Hikvision mainstream `*01` fail thì fallback substream `*02`.
 - Thêm guard chống spam camera: bấm Start nhiều lần không tạo thêm RTSP session; reconnect backoff 5s → 10s → 20s → 30s.
-- Thêm backend `PresetCameraSeeder` đọc `backend/.env.local` để seed camera RTSP làm sẵn khi `FIRESAFE_PRESET_CAMERA_RTSP_URL` khác rỗng; bỏ seed camera fake `Camera-Test-01`.
+- Thêm backend `PresetCameraSeeder` đọc process env/root `.env` để seed camera RTSP làm sẵn khi `FIRESAFE_PRESET_CAMERA_RTSP_URL` khác rỗng; bỏ seed camera fake `Camera-Test-01`.
 - Thêm dependencies service `ultralytics`, `opencv-python`, `requests`, `minio`.
-- Thêm `setup.ps1` (Windows) và `setup.sh` (Linux) để chạy/dừng/dọn runtime local, tự chọn port trống, cấp port infra từ dải `7001+`, lưu log vào `.runtime/logs/` và port vào `.runtime/ports.env`.
-- Runtime manager `up` tự kiểm tra/tạo runtime cần thiết: Java 21 project-local nếu máy chưa có, `frontend/node_modules` qua `npm install`, AI Worker `venv` + `requirements.txt`, và `frontend/.env.local` với `NEXT_PUBLIC_API_URL` + `NEXT_PUBLIC_AI_WORKER_URL`.
+- Runtime manager native cũ đã được loại bỏ; Docker Compose full stack là đường chạy chính.
 - Runtime manager `down` chỉ dừng AI Worker/frontend/backend/infra và xóa `.runtime/`; giữ `venv`, `node_modules`, `.next`, `backend/target`, local JDK để lần sau khởi động nhanh.
 - Runtime manager `clean` làm toàn bộ việc của `down`, dọn Docker container/volume/orphan thuộc compose project, không xóa shared images, rồi xóa thêm `ai-worker/venv/`, `frontend/node_modules/`, `frontend/.next/`, `backend/target/`, local JDK (`jdk-21.0.3+9/` trên Windows, `jdk-21-linux/` trên Linux).
 - Runtime manager `up` quản lý AI Worker như host service cùng backend/frontend/infra.
@@ -431,7 +420,7 @@ npm run dev   # http://localhost:3000
 - [x] Upload snapshot lên MinIO.
 - [x] Login backend lấy JWT.
 - [x] POST `/api/v1/alerts` với `cameraId`, `label`, `confidence`, `imageUrl`, `detectedAt`.
-- [x] Dùng Redis debounce/RabbitMQ notification sẵn có ở backend.
+- [x] Dùng Redis reserve/debounce ở backend trước upload để tránh spam MinIO/MariaDB/RabbitMQ/Telegram.
 - [x] Chạy E2E thật qua AI Worker service và xác nhận alert xuất hiện trong DB/frontend.
 
 #### 6c. RTSP realtime service *(Hoàn thành MVP; tiếp tục tune thực địa nếu cần)*
@@ -456,27 +445,27 @@ npm run dev   # http://localhost:3000
 ### ✅ Giai đoạn 7 — Giám sát Hệ thống *(Tuần 14)*
 
 > **Trạng thái: HOÀN THÀNH MVP; còn runtime smoke test cuối nếu cần xác nhận trên máy hiện tại**
-> **Context cho session mới:** Đọc [`docs/explanations/monitoring-service-explanation.md`](../explanations/monitoring-service-explanation.md), [`frontend-explanation.md`](../explanations/frontend-explanation.md), [`backend-explanation.md`](../explanations/backend-explanation.md), [`ai-worker-explanation.md`](../explanations/ai-worker-explanation.md).
+> **Context cho session mới:** Đọc [`docs/explanations/infrastructure-explanation.md`](../explanations/infrastructure-explanation.md), [`frontend-explanation.md`](../explanations/frontend-explanation.md), [`backend-explanation.md`](../explanations/backend-explanation.md), [`ai-worker-explanation.md`](../explanations/ai-worker-explanation.md).
 
 **Mục tiêu:** Hệ thống "sống" 24/7 và tự báo cáo "sức khỏe" trên Dashboard UI, không cần Grafana cho local MVP.
 
 #### Thu thập Metrics *(Hoàn thành MVP)*
-- [x] **Monitoring service:** `monitoring-service/` scrape/aggregate metrics từ Backend, AI Worker, Redis, RabbitMQ, MinIO và host system; trả `GET /api/dashboard/metrics` cho UI.
-- [x] **Backend:** `/actuator/prometheus` export JVM/API metrics; `GET /api/v1/metrics/export` export business metrics nhẹ: alert totals, hourly/byLabel, camera total/active.
+- [x] **Prometheus:** scrape Backend, AI Worker và exporters; Nginx proxy `/prometheus/api/v1/` cho frontend query trực tiếp.
+- [x] **Backend:** `/actuator/prometheus` export JVM/API metrics; `GET /api/v1/metrics/export` giữ cho business metrics legacy/migration.
 - [x] **AI Worker:** `GET /metrics` export Prometheus text: workers/sources/camera running/hasFrame/error, detections, alerts sent, inference avg.
-- [x] **Frontend Dashboard:** `/` đọc `NEXT_PUBLIC_MONITORING_URL`, hiển thị cards CPU/GPU/RAM/disk/API/infra/alerts và charts alert theo giờ/label.
-- [x] **Grafana/Prometheus container:** không dùng trong local MVP; defer cho production nếu cần dashboard ngoài app.
+- [x] **Frontend Dashboard:** `/` đọc `NEXT_PUBLIC_PROMETHEUS_URL` hoặc same-origin `/prometheus/api/v1/query`, hiển thị cards từ Prometheus metrics và fallback khi metric chưa có.
+- [x] **Grafana:** chưa dùng; Prometheus API được frontend query trực tiếp qua Nginx.
 
 #### Dashboard UI Monitoring *(Hoàn thành MVP)*
 - [x] Backend UP/DOWN, requests total, avg latency, error rate, uptime.
-- [x] System: CPU, RAM/disk used-total qua `psutil`, GPU `%` + VRAM qua `nvidia-smi` nếu có NVIDIA.
-- [x] Infra: Redis memory/keys, RabbitMQ messages/consumers, MinIO object count/bytes.
-- [x] Alert count: total, NEW, last 24h, high confidence last 24h, hourly chart, by-label chart.
+- [x] System: CPU, RAM/disk used-total qua node-exporter; GPU fallback `N/A` nếu chưa thêm GPU exporter.
+- [x] Infra: Redis memory/keys, RabbitMQ messages/consumers, MinIO status qua Prometheus/exporters; một số count/bytes fallback nếu exporter chưa cung cấp metric tương ứng.
+- [x] Alert count: fallback `0` cho đến khi backend export business metrics dạng Prometheus hoặc frontend dùng nguồn business API riêng.
 - [x] AI Worker: UP/DOWN, số workers/sources, trạng thái/counters từng camera đang detect.
 - [x] 5 alert mới nhất để xem nhanh; quản lý đầy đủ ở `/alerts`.
 
 #### Việc còn lại sau MVP
-- [ ] Runtime smoke test `setup.ps1 up` và mở `/api/dashboard/metrics` + `/` trên máy hiện tại.
+- [x] Runtime smoke test Docker Compose và mở `/prometheus/api/v1/query?query=up` + `/` trên máy hiện tại.
 
 ---
 
@@ -497,7 +486,10 @@ services:
   frontend:             # Next.js UI, internal behind Nginx
   backend:              # Spring Boot API, internal behind Nginx
   worker:               # AI Worker RTSP preview/detect, auto-download/cache best.pt
-  monitoring-service:   # Dashboard metrics aggregator, internal behind Nginx
+  prometheus:           # Metrics collector/store, API proxied by Nginx
+  redis-exporter:       # Redis metrics for Prometheus
+  mysqld-exporter:      # MariaDB metrics for Prometheus
+  node-exporter:        # Host/container node metrics for Prometheus
   mariadb:              # Database
   redis:                # Cache/Debounce
   rabbitmq:             # Message Broker + Management UI
@@ -506,9 +498,9 @@ services:
   redisinsight:         # Redis web UI
 ```
 
-**Env strategy:** Docker users copy root `.env.example` → `.env`; Compose injects vars into containers. Service-local `.env.local` files remain only for native `setup.ps1`/`setup.sh` dev mode.
+**Env strategy:** Docker users copy root `.env.example` → `.env`; Compose injects vars into containers. Service-local `.env.local` files have been removed.
 
-**Nginx strategy:** Compose default chỉ publish Nginx cho app (`FRONTEND_PORT=3000` → container `nginx:80`). `frontend`, `backend`, `worker`, `monitoring-service` chỉ expose trong Docker network, không publish trực tiếp ra host. Frontend Docker mode dùng same-origin URLs rỗng để browser gọi `/api/v1/*`, `/api/cameras/*`, `/api/dashboard/metrics` qua Nginx. Nginx dùng Docker DNS resolver `127.0.0.11` để tránh giữ IP container cũ sau khi service recreate.
+**Nginx strategy:** Compose default chỉ publish Nginx cho app (`FRONTEND_PORT=3000` → container `nginx:80`). `frontend`, `backend`, `worker`, `prometheus` và exporters chỉ expose trong Docker network, không publish trực tiếp ra host trừ UI/dev ports đã khai báo. Frontend Docker mode dùng same-origin URLs rỗng để browser gọi `/api/v1/*`, `/api/cameras/*`, `/prometheus/api/v1/*` qua Nginx. Nginx dùng Docker DNS resolver `127.0.0.11` để tránh giữ IP container cũ sau khi service recreate.
 
 **Nginx route map:**
 
@@ -519,16 +511,16 @@ services:
 | `/actuator/`, `/swagger-ui/`, `/v3/api-docs/` | `backend:8080` |
 | `/api/cameras/` | `worker:8090` |
 | `/worker/health` | `worker:8090/health` |
-| `/api/dashboard/metrics` | `monitoring-service:8091` |
-| `/monitoring/health` | `monitoring-service:8091/health` |
+| `/prometheus/api/v1/` | `prometheus:9090/api/v1/` |
+| `/prometheus/-/healthy` | `prometheus:9090/-/healthy` |
 
-**Compose port layout:** default root `.env.example` dùng app entrypoint `FRONTEND_PORT=3000`; infra theo dải runtime manager: `ADMINER_PORT=7001`, `MINIO_CONSOLE_PORT=7002`, `REDISINSIGHT_PORT=7003`, `RABBITMQ_UI_PORT=7004`, `MARIADB_PORT=7005`, `MINIO_API_PORT=7006`, `REDIS_PORT=7007`, `RABBITMQ_PORT=7008`.
+**Compose port layout:** default root `.env.example` dùng app entrypoint `FRONTEND_PORT=3000`; infra theo dải runtime manager: `ADMINER_PORT=7001`, `MINIO_CONSOLE_PORT=7002`, `REDISINSIGHT_PORT=7003`, `RABBITMQ_UI_PORT=7004`, `MARIADB_PORT=7005`, `MINIO_API_PORT=7006`, `REDIS_PORT=7007`, `RABBITMQ_PORT=7008`, `PROMETHEUS_PORT=7009`, `RABBITMQ_PROMETHEUS_PORT=7010`.
 
 **Worker model:** mặc định `best.pt`; container tự tải từ Hugging Face `/resolve/main/best.pt` vào volume `ai_worker_models` nếu chưa có. Nếu model repo yêu cầu auth, dùng `HF_TOKEN`. Docker image pin PyTorch CPU-only để tránh kéo CUDA wheels nặng; GPU/TensorRT là tối ưu production riêng.
 
-**Camera preview/load guard:** Frontend cho phép mở nhiều MJPEG preview, nhưng trước khi mở thêm sẽ đọc `/api/dashboard/metrics` và chặn nếu CPU/RAM/GPU cao nhất ≥ 80%. Status camera được cache snapshot ngắn trong RAM AI Worker mặc định 1 giây để giảm polling trực tiếp vào worker.
+**Camera preview/load guard:** Frontend cho phép mở nhiều MJPEG preview, nhưng trước khi mở thêm sẽ query Prometheus qua `/prometheus/api/v1/query` và chặn nếu CPU/RAM/GPU cao nhất ≥ 80%. Status camera được cache snapshot ngắn trong RAM AI Worker mặc định 1 giây để giảm polling trực tiếp vào worker.
 
-**Monitoring host metrics/cache:** Docker mode dùng Linux-only privileged/mounted host `/proc`, `/sys`, `/` để đọc host metrics. Docker Desktop Windows không bảo đảm phản ánh Windows host thật. `/api/dashboard/metrics` được cache ngắn trong Redis mặc định 2 giây để tránh nhiều dashboard/browser scrape toàn bộ dependency liên tục nhưng vẫn giữ dữ liệu gần realtime.
+**Prometheus metrics:** Docker mode dùng Prometheus + exporters. Node-exporter đọc host/container metrics qua mounted rootfs; Docker Desktop Windows không bảo đảm phản ánh Windows host thật. Frontend cache ngắn Prometheus query trong memory để giảm query lặp từ dashboard/browser.
 
 #### Shadow Testing (2–3 tuần song song)
 - Chạy hệ thống **song song** với hệ thống báo cháy vật lý hiện tại
@@ -541,7 +533,7 @@ services:
 ### ⏳ Giai đoạn 9 — Tối ưu hoá Toàn diện & Triển khai Production *(Sau Shadow Testing)*
 
 > **Trạng thái: CHƯA BẮT ĐẦU**
-> **Context cho session mới:** Bắt đầu từ kết quả Shadow Testing của Giai đoạn 8, sau đó đọc `infrastructure-explanation.md`, `backend-explanation.md`, `ai-worker-explanation.md`, `frontend-explanation.md`, `monitoring-service-explanation.md`.
+> **Context cho session mới:** Bắt đầu từ kết quả Shadow Testing của Giai đoạn 8, sau đó đọc `infrastructure-explanation.md`, `backend-explanation.md`, `ai-worker-explanation.md`, `frontend-explanation.md`.
 
 **Mục tiêu:** Chuyển FireSafe từ Docker Compose MVP/shadow mode sang hệ thống production có domain/TLS, bảo mật, backup, release flow, observability và tối ưu hiệu năng đủ để vận hành dài hạn.
 
@@ -554,7 +546,7 @@ services:
 - [ ] Kiểm tra không expose trực tiếp backend/worker/monitoring ra internet; chỉ expose Nginx và các UI admin khi cần qua VPN/LAN.
 
 #### 9b. Image registry & release flow
-- [ ] Chuẩn hóa image tags cho `backend`, `frontend`, `worker`, `monitoring-service`: semver hoặc git SHA.
+- [ ] Chuẩn hóa image tags cho `backend`, `frontend`, `worker`, `prometheus`: semver hoặc git SHA.
 - [ ] Push images lên registry (Docker Hub/GHCR/private registry).
 - [ ] Tách compose deploy artifact: `docker-compose.yml` + `.env` + Nginx config cần thiết, không phụ thuộc source tree.
 - [ ] Thêm release checklist: build, scan, smoke test, tag, push, deploy, rollback.
@@ -576,6 +568,11 @@ services:
 #### 9e. AI Worker performance & reliability
 - [ ] Benchmark FPS/latency theo camera thật sau Shadow Testing.
 - [ ] Tune `AI_WORKER_CONF`, detection interval, sustained detection seconds, RTSP transports/buffer.
+- [x] Nâng cấp luồng detect từ per-camera inference sang cross-camera batching nếu cần tối ưu nhiều camera/GPU.
+- [x] Thiết kế Producer–Consumer: mỗi camera reader thread chỉ đọc RTSP và cập nhật `latest_frames[camera_id]`; inference scheduler global gom frame để infer batch.
+- [x] Scheduler dùng `max_batch_size`, `max_wait_ms`, round-robin camera IDs, và rule tối đa 1 frame/camera/batch để tránh gom trùng nhiều frame của cùng camera.
+- [x] Batch size linh động: `effective_batch_size = min(max_batch_size, cameras_with_available_frame)`; nếu camera ít hơn batch size thì infer partial batch, không chờ vô hạn.
+- [x] Tách alert state theo camera sau batch inference: sustained detection, Redis reserve, MinIO snapshot và backend alert vẫn xử lý theo `cameraId + label`.
 - [ ] Cân nhắc ONNX Runtime/TensorRT nếu có GPU NVIDIA và cần FPS/latency tốt hơn.
 - [ ] Tối ưu model/container GPU riêng, không làm CPU-default image nặng hơn.
 - [ ] Hardening RTSP network: VLAN/LAN-only, reconnect policy, camera credential rotation.

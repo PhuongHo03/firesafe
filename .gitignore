@@ -8,11 +8,8 @@ logs/
 .env
 .env.*
 *.env.local
-backend/.env.local
-frontend/.env.local
 !.env.example
 !*.env.example
-!*.env.local.example
 
 # Python
 __pycache__/
@@ -20,7 +17,7 @@ __pycache__/
 .venv/
 venv/
 ai-worker/venv/
-mock-worker/venv/
+ai-worker/models/
 video-detect/venv/
 
 # Node / Next

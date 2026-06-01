@@ -12,4 +12,4 @@ if [ ! -f "$AI_MODEL_PATH" ]; then
   fi
 fi
 
-exec python service.py --host 0.0.0.0 --port "${AI_WORKER_PORT:-8090}" --model "$AI_MODEL_PATH"
+exec python -m src.main --host 0.0.0.0 --port "${AI_WORKER_PORT:-8090}" --model "$AI_MODEL_PATH"

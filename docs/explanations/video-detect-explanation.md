@@ -212,4 +212,4 @@ Không dùng để:
 
 ---
 
-*Tài liệu phản ánh trạng thái video-detect tại **Giai đoạn 8**. Công cụ này vẫn là CLI debug offline, tách khỏi Worker RTSP service chính và không nằm trong Docker Compose runtime.*
+*Tài liệu phản ánh trạng thái video-detect tại **Giai đoạn 9**. Công cụ này vẫn là CLI debug offline, tách khỏi Worker RTSP service chính và không nằm trong Docker Compose runtime.*

@@ -1,5 +1,5 @@
 -- V1__init_schema.sql
--- Initial database schema for FireSafe system
+-- Initial database schema and seed data for FireSafe system
 
 CREATE TABLE roles (
     id   BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -46,7 +46,15 @@ CREATE TABLE alerts (
     FOREIGN KEY (camera_id) REFERENCES cameras (id) ON DELETE CASCADE
 );
 
--- Indexes for common queries
 CREATE INDEX idx_alerts_camera_id    ON alerts (camera_id);
 CREATE INDEX idx_alerts_detected_at  ON alerts (detected_at DESC);
 CREATE INDEX idx_alerts_status       ON alerts (status);
+
+INSERT INTO roles (name) VALUES ('ROLE_ADMIN'), ('ROLE_VIEWER');
+
+INSERT INTO users (username, password_hash, email, is_active)
+VALUES ('Admin', '$2a$12$nbn0upsjYtRlK71imVtw8Osc6wWuWbN4pBhgz9gltW/UkaJYZSkg.', 'admin@nhattienchung.vn', TRUE);
+
+INSERT INTO user_roles (user_id, role_id)
+SELECT u.id, r.id FROM users u, roles r
+WHERE u.email = 'admin@nhattienchung.vn' AND r.name = 'ROLE_ADMIN';

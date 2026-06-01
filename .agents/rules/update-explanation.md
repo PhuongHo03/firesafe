@@ -10,8 +10,7 @@
 | `frontend/` | `docs/explanations/frontend-explanation.md` |
 | `ai-worker/` | `docs/explanations/ai-worker-explanation.md` |
 | `video-detect/` | `docs/explanations/video-detect-explanation.md` |
-| `mock-worker/` | `docs/explanations/mock-worker-explanation.md` |
-| `docker-compose*.yml`, `setup.ps1` | `docs/explanations/infrastructure-explanation.md` |
+| `docker-compose.yml`, `infra/` | `docs/explanations/infrastructure-explanation.md` |
 | New major service/tool | Create matching `docs/explanations/<area>-explanation.md` |
 
 If a change touches multiple areas, update each matching explanation file.
@@ -51,8 +50,8 @@ If files/folders changed, update the ASCII tree.
 Keep entries short:
 
 ```text
-├── service.py          ← HTTP API: health/start/stop/status/stream
-└── src/config.py       ← Runtime/model config
+├── src/main.py         ← App entrypoint
+└── src/configs/        ← Runtime/model config
 ```
 
 Do not list generated/local artifacts unless users must know they are created/ignored.

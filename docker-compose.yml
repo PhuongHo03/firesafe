@@ -3,6 +3,7 @@ services:
     image: mariadb:11.4
     container_name: firesafe-mariadb
     environment:
+      TZ: ${TZ:-ICT-7}
       MYSQL_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-root}
       MYSQL_DATABASE: ${DB_NAME:-firesafe}
       MYSQL_USER: ${DB_USER:-firesafe}
@@ -22,6 +23,8 @@ services:
   redis:
     image: redis:7.4-alpine
     container_name: firesafe-redis
+    environment:
+      TZ: ${TZ:-ICT-7}
     ports:
       - "${REDIS_PORT:-7007}:6379"
     healthcheck:
@@ -35,12 +38,15 @@ services:
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
     container_name: firesafe-rabbitmq
+    command: sh -c "rabbitmq-plugins enable --offline rabbitmq_prometheus && rabbitmq-server"
     environment:
+      TZ: ${TZ:-ICT-7}
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
     ports:
       - "${RABBITMQ_PORT:-7008}:5672"
       - "${RABBITMQ_UI_PORT:-7004}:15672"
+      - "${RABBITMQ_PROMETHEUS_PORT:-7010}:15692"
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
       interval: 10s
@@ -54,8 +60,10 @@ services:
     container_name: firesafe-minio
     command: server /data --console-address ":9001"
     environment:
+      TZ: ${TZ:-ICT-7}
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_PROMETHEUS_AUTH_TYPE: public
     ports:
       - "${MINIO_API_PORT:-7006}:9000"
       - "${MINIO_CONSOLE_PORT:-7002}:9001"
@@ -75,6 +83,7 @@ services:
     image: firesafe-backend:latest
     container_name: firesafe-backend
     environment:
+      TZ: ${TZ:-ICT-7}
       BACKEND_PORT: 8080
       DB_HOST: mariadb
       DB_PORT: 3306
@@ -123,9 +132,10 @@ services:
     image: firesafe-worker:latest
     container_name: firesafe-worker
     environment:
+      TZ: ${TZ:-ICT-7}
       AI_WORKER_PORT: 8090
       BACKEND_URL: http://backend:8080
-      FIRESAFE_USERNAME: ${FIRESAFE_USERNAME:-admin}
+      FIRESAFE_USERNAME: ${FIRESAFE_USERNAME:-admin@nhattienchung.vn}
       FIRESAFE_PASSWORD: ${FIRESAFE_PASSWORD:-admin123}
       MINIO_URL: minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
@@ -137,13 +147,15 @@ services:
       AI_WORKER_OVERLAY_TTL_SECONDS: ${AI_WORKER_OVERLAY_TTL_SECONDS:-2.0}
       AI_WORKER_STATUS_CACHE_TTL_SECONDS: ${AI_WORKER_STATUS_CACHE_TTL_SECONDS:-1.0}
       AI_WORKER_SUSTAINED_DETECTION_SECONDS: ${AI_WORKER_SUSTAINED_DETECTION_SECONDS:-3.0}
+      AI_WORKER_BATCH_MAX_SIZE: ${AI_WORKER_BATCH_MAX_SIZE:-1}
+      AI_WORKER_BATCH_MAX_WAIT_MS: ${AI_WORKER_BATCH_MAX_WAIT_MS:-50}
+      AI_WORKER_SCHEDULER_IDLE_SLEEP_MS: ${AI_WORKER_SCHEDULER_IDLE_SLEEP_MS:-5}
       AI_MODEL_URL: ${AI_MODEL_URL:-https://huggingface.co/TommyNgx/YOLOv10-Fire-and-Smoke-Detection/resolve/main/best.pt}
       AI_MODEL_PATH: ${AI_MODEL_PATH:-/app/models/best.pt}
       HF_TOKEN: ${HF_TOKEN:-}
     expose:
       - "8090"
     volumes:
-      - ./ai-worker/service.py:/app/service.py:ro
       - ./ai-worker/src:/app/src:ro
       - ai_worker_models:/app/models
     depends_on:
@@ -159,51 +171,71 @@ services:
     networks:
       - firesafe-net
 
-  monitoring-service:
-    build:
-      context: ./monitoring-service
-    image: firesafe-monitoring-service:latest
-    container_name: firesafe-monitoring-service
-    privileged: true
-    environment:
-      BACKEND_URL: http://backend:8080
-      AI_WORKER_URL: http://worker:8090
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      RABBITMQ_URL: http://rabbitmq:15672
-      RABBITMQ_USERNAME: ${RABBITMQ_USER:-guest}
-      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-guest}
-      MINIO_URL: minio:9000
-      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
-      MINIO_BUCKET: ${MINIO_BUCKET:-snapshots}
-      MONITORING_CACHE_TTL_SECONDS: ${MONITORING_CACHE_TTL_SECONDS:-2}
-      HOST_PROC: ${HOST_PROC:-/host/proc}
-      HOST_SYS: ${HOST_SYS:-/host/sys}
-      HOST_ROOT: ${HOST_ROOT:-/host/root}
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    container_name: firesafe-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d
+      - --web.enable-lifecycle
+    ports:
+      - "${PROMETHEUS_PORT:-7009}:9090"
     expose:
-      - "8091"
+      - "9090"
     volumes:
-      - ./monitoring-service/service.py:/app/service.py:ro
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /:/host/root:ro
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
     depends_on:
       backend:
         condition: service_healthy
       worker:
         condition: service_healthy
-      redis:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
+      redis-exporter:
+        condition: service_started
+      mysqld-exporter:
+        condition: service_started
+      node-exporter:
+        condition: service_started
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8091/health"]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
       interval: 15s
       timeout: 5s
       retries: 5
+    networks:
+      - firesafe-net
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.67.0
+    container_name: firesafe-redis-exporter
+    environment:
+      REDIS_ADDR: redis://redis:6379
+    expose:
+      - "9121"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - firesafe-net
+
+  mysqld-exporter:
+    image: prom/mysqld-exporter:v0.16.0
+    container_name: firesafe-mysqld-exporter
+    command:
+      - --mysqld.address=mariadb:3306
+      - --mysqld.username=${DB_USER:-firesafe}:${DB_PASSWORD:-firesafe}
+    expose:
+      - "9104"
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    networks:
+      - firesafe-net
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: firesafe-node-exporter
+    expose:
+      - "9100"
     networks:
       - firesafe-net
 
@@ -213,14 +245,15 @@ services:
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
         NEXT_PUBLIC_AI_WORKER_URL: ${NEXT_PUBLIC_AI_WORKER_URL:-}
-        NEXT_PUBLIC_MONITORING_URL: ${NEXT_PUBLIC_MONITORING_URL:-}
+        NEXT_PUBLIC_PROMETHEUS_URL: ${NEXT_PUBLIC_PROMETHEUS_URL:-}
     image: firesafe-frontend:latest
     container_name: firesafe-frontend
     environment:
+      TZ: ${TZ:-ICT-7}
       PORT: 3000
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
       NEXT_PUBLIC_AI_WORKER_URL: ${NEXT_PUBLIC_AI_WORKER_URL:-}
-      NEXT_PUBLIC_MONITORING_URL: ${NEXT_PUBLIC_MONITORING_URL:-}
+      NEXT_PUBLIC_PROMETHEUS_URL: ${NEXT_PUBLIC_PROMETHEUS_URL:-}
     expose:
       - "3000"
     depends_on:
@@ -228,7 +261,7 @@ services:
         condition: service_healthy
       worker:
         condition: service_healthy
-      monitoring-service:
+      prometheus:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000"]
@@ -241,6 +274,8 @@ services:
   nginx:
     image: nginx:1.27-alpine
     container_name: firesafe-nginx
+    environment:
+      TZ: ${TZ:-ICT-7}
     ports:
       - "${APP_BIND_ADDRESS:-0.0.0.0}:${FRONTEND_PORT:-3000}:80"
     volumes:
@@ -252,7 +287,7 @@ services:
         condition: service_healthy
       worker:
         condition: service_healthy
-      monitoring-service:
+      prometheus:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1/health"]
@@ -266,6 +301,7 @@ services:
     image: adminer:4.8.1
     container_name: firesafe-adminer
     environment:
+      TZ: ${TZ:-ICT-7}
       ADMINER_DEFAULT_SERVER: mariadb
     ports:
       - "${ADMINER_PORT:-7001}:8080"
@@ -278,6 +314,8 @@ services:
   redisinsight:
     image: redis/redisinsight:latest
     container_name: firesafe-redisinsight
+    environment:
+      TZ: ${TZ:-ICT-7}
     ports:
       - "${REDISINSIGHT_PORT:-7003}:5540"
     volumes:
@@ -293,3 +331,4 @@ volumes:
   minio_data:
   redisinsight_data:
   ai_worker_models:
+  prometheus_data:

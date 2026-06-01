@@ -9,7 +9,6 @@ RUN apt-get update \
 COPY requirements.txt .
 RUN pip install --no-cache-dir --timeout 120 --retries 5 -r requirements.txt
 
-COPY service.py ./service.py
 COPY src ./src
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
 RUN chmod +x ./docker-entrypoint.sh

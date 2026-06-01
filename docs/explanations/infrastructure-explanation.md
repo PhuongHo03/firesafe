@@ -1,10 +1,10 @@
 # 🐳 Infrastructure & Docker Runtime — Giải thích
 
-> Workflow chính Giai đoạn 8 là **Docker Compose full stack** qua `docker-compose.yml` + Nginx reverse proxy. **Native dev** qua `setup.ps1`/`setup.sh` vẫn giữ để debug host-process nhanh.
+> Workflow chính Giai đoạn 9 là **Docker Compose full stack** qua `docker-compose.yml` + Nginx reverse proxy. Runtime manager/native dev scripts đã được loại bỏ để repo chỉ giữ một đường chạy chính.
 
 ---
 
-## 🚀 Chế độ 1 — Docker Compose full stack
+## 🚀 Docker Compose full stack
 
 Giai đoạn 8 dùng `docker-compose.yml` để chạy full stack trong Docker:
 
@@ -28,73 +28,21 @@ project-or-deploy-folder/
 └── .env
 ```
 
-Compose đọc root `.env`, rồi inject biến vào container qua `environment:`/`build.args:`. Service không cần đọc `.env.local` trong container.
+Compose đọc root `.env`, rồi inject biến vào container qua `environment:`/`build.args:`. Service dùng process env từ Compose; không còn service-local `.env.local` trong repo.
 
 Flow env:
 
 ```text
-Native dev: service/.env.local -> setup script -> process env -> service
-Docker:     root .env          -> docker compose -> container env -> service
+root .env -> docker compose -> container env -> service
 ```
 
 Frontend là ngoại lệ quan trọng: `NEXT_PUBLIC_*` được bake vào bundle lúc `docker build`, nên compose truyền các biến này qua `build.args`. Trong Docker Compose, các giá trị này để trống để browser gọi same-origin qua Nginx.
 
 ---
 
-## 🚀 Chế độ 2 — Native dev runtime
-
-Runtime manager giữ workflow dev nhanh: app service chạy trên host, infra chạy Docker.
-
-Windows:
-
-```powershell
-.\setup.ps1 up
-.\setup.ps1 down
-.\setup.ps1 clean
-```
-
-Linux:
-
-```bash
-./setup.sh up
-./setup.sh down
-./setup.sh clean
-```
-
-| Command | Hành động |
-|---|---|
-| `up` | Tạo `.runtime/`, kiểm tra dependency, tự chuẩn bị JDK/frontend deps/AI Worker/monitoring venv khi cần, ghi `frontend/.env.local`, start Docker infra + backend + worker + monitoring + frontend |
-| `down` | Dừng host-process bằng PID metadata, `docker compose -f docker-compose.dev.yml down`, xóa `.runtime/`; giữ deps/build cache |
-| `clean` | Làm toàn bộ việc của `down`, xóa Docker volume/orphan thuộc project và generated artifacts local |
-
-Native dev dùng service-local env nếu có:
-
-```text
-backend/.env.local
-frontend/.env.local
-ai-worker/.env.local
-```
-
-`setup.ps1`/`setup.sh` nạp các file này hoặc tự ghi env cần thiết rồi truyền vào process. App code vẫn đọc **process env**, không hardcode đường dẫn env file.
-
-Runtime metadata/logs:
-
-```text
-.runtime/ports.env
-.runtime/logs/docker.log
-.runtime/logs/backend.log
-.runtime/logs/frontend.log
-.runtime/logs/ai-worker.log
-.runtime/logs/monitoring-service.log
-```
-
-`ports.env` chứa port host thực tế cho frontend/backend/worker/monitoring và infra. Runtime manager ưu tiên port mặc định rồi tự tăng nếu port bận.
-
----
-
 ## 🌐 Nginx reverse proxy
 
-Compose chỉ publish app qua Nginx tại `http://localhost:${FRONTEND_PORT}`. `frontend`, `backend`, `worker`, `monitoring-service` chỉ `expose` trong Docker network, không publish host ports.
+Compose publish app qua Nginx tại `http://localhost:${FRONTEND_PORT}`. `frontend`, `backend`, `worker`, `prometheus` và exporters chỉ `expose` trong Docker network, trừ các UI/dev ports được khai báo rõ.
 
 | Public path | Upstream |
 |---|---|
@@ -104,8 +52,8 @@ Compose chỉ publish app qua Nginx tại `http://localhost:${FRONTEND_PORT}`. `
 | `/swagger-ui/`, `/swagger-ui.html`, `/v3/api-docs/` | `backend:8080` |
 | `/api/cameras/` | `worker:8090` |
 | `/worker/health` | `worker:8090/health` |
-| `/api/dashboard/metrics` | `monitoring-service:8091` |
-| `/monitoring/health` | `monitoring-service:8091/health` |
+| `/prometheus/api/v1/query` | `prometheus:9090/api/v1/query` |
+| `/prometheus/-/healthy` | `prometheus:9090/-/healthy` |
 | `/health` | Nginx local health |
 
 `/api/cameras/` tắt proxy buffering/cache và tăng timeout để MJPEG stream không bị stall. Nginx dùng Docker DNS resolver `127.0.0.11` với TTL ngắn để tránh lỗi 502 do giữ IP container cũ sau khi `worker`/service bị recreate.
@@ -120,7 +68,7 @@ Compose chỉ publish app qua Nginx tại `http://localhost:${FRONTEND_PORT}`. `
 | `frontend` | `frontend/Dockerfile` | internal `3000` | Next.js UI |
 | `backend` | `backend/Dockerfile` | internal `8080` | Spring Boot API |
 | `worker` | `ai-worker/Dockerfile` | internal `8090` | AI Worker RTSP preview/detect |
-| `monitoring-service` | `monitoring-service/Dockerfile` | internal `8091` | Dashboard metrics aggregator |
+| `prometheus` | `prom/prometheus` | `7009` | Scrape/store metrics + Prometheus HTTP API |
 | `adminer` | `adminer:4.8.1` | `7001` | DB UI |
 | `minio` console | `minio/minio` | `7002` | MinIO UI |
 | `redisinsight` | `redis/redisinsight` | `7003` | Redis UI |
@@ -129,8 +77,12 @@ Compose chỉ publish app qua Nginx tại `http://localhost:${FRONTEND_PORT}`. `
 | `minio` API | `minio/minio` | `7006` | Snapshot object storage |
 | `redis` | `redis:7.4-alpine` | `7007` | Debounce/cache |
 | `rabbitmq` AMQP | `rabbitmq:3.13-management-alpine` | `7008` | Queue |
+| `rabbitmq` Prometheus | `rabbitmq:3.13-management-alpine` | `7010` | RabbitMQ metrics endpoint |
+| `redis-exporter` | `oliver006/redis_exporter` | internal `9121` | Redis metrics cho Prometheus |
+| `mysqld-exporter` | `prom/mysqld-exporter` | internal `9104` | MariaDB metrics cho Prometheus |
+| `node-exporter` | `prom/node-exporter` | internal `9100` | Host/container node metrics cho Prometheus |
 
-`video-detect/` và `mock-worker/` không nằm trong runtime compose: chúng là CLI/debug/test tools chạy khi cần.
+`video-detect/` không nằm trong runtime compose: đây là CLI/debug tool chạy khi cần.
 
 ---
 
@@ -138,13 +90,14 @@ Compose chỉ publish app qua Nginx tại `http://localhost:${FRONTEND_PORT}`. `
 
 Root `.env.example` là superset biến deploy cho tất cả service:
 
-- public bind/ports: `APP_BIND_ADDRESS=0.0.0.0` để máy cùng LAN truy cập app qua IP host, `FRONTEND_PORT` cho Nginx app entrypoint, infra ports `7001–7008`
-- frontend public URLs: `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_AI_WORKER_URL`, `NEXT_PUBLIC_MONITORING_URL` (để trống để dùng same-origin Nginx)
+- public bind/ports: `APP_BIND_ADDRESS=0.0.0.0` để máy cùng LAN truy cập app qua IP host, `FRONTEND_PORT` cho Nginx app entrypoint, infra ports `7001–7010`
+- frontend public URLs: `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_AI_WORKER_URL`, `NEXT_PUBLIC_PROMETHEUS_URL` (để trống để dùng same-origin Nginx)
 - DB/RabbitMQ/MinIO creds
+- runtime timezone: `TZ` mặc định `ICT-7` (UTC+7, container-safe) để tất cả containers dùng giờ Việt Nam
 - backend auth: `JWT_SECRET`, `FIRESAFE_USERNAME`, `FIRESAFE_PASSWORD`
 - preset camera seed: `FIRESAFE_PRESET_CAMERA_RTSP_URL`, `FIRESAFE_PRESET_CAMERA_NAME`, `FIRESAFE_PRESET_CAMERA_LOCATION`
-- worker tuning: `AI_WORKER_CONF`, `AI_WORKER_RTSP_TRANSPORTS`, `AI_WORKER_RTSP_BUFFER_SIZE`, `AI_WORKER_OVERLAY_TTL_SECONDS`, `AI_WORKER_STATUS_CACHE_TTL_SECONDS`, `AI_WORKER_SUSTAINED_DETECTION_SECONDS`, `AI_MODEL_URL`, `AI_MODEL_PATH`, `HF_TOKEN`
-- monitoring cache/host mounts: `MONITORING_CACHE_TTL_SECONDS`, `HOST_PROC`, `HOST_SYS`, `HOST_ROOT`
+- worker tuning: `AI_WORKER_CONF`, `AI_WORKER_RTSP_TRANSPORTS`, `AI_WORKER_RTSP_BUFFER_SIZE`, `AI_WORKER_OVERLAY_TTL_SECONDS`, `AI_WORKER_STATUS_CACHE_TTL_SECONDS`, `AI_WORKER_SUSTAINED_DETECTION_SECONDS`, `AI_WORKER_BATCH_MAX_SIZE`, `AI_WORKER_BATCH_MAX_WAIT_MS`, `AI_WORKER_SCHEDULER_IDLE_SLEEP_MS`, `AI_MODEL_URL`, `AI_MODEL_PATH`, `HF_TOKEN`
+- Prometheus/exporters: `PROMETHEUS_PORT`, `RABBITMQ_PROMETHEUS_PORT`; Prometheus scrape config nằm ở `infra/prometheus/prometheus.yml`
 
 Không commit root `.env`; chỉ commit `.env.example`.
 
@@ -175,29 +128,20 @@ Nếu Hugging Face repo/model yêu cầu auth, set `HF_TOKEN` trong root `.env`.
 
 ---
 
-## 📊 Monitoring trong Docker
+## 📊 Prometheus trong Docker
 
-Native runtime là cách ổn định nhất để lấy CPU/RAM/Disk của host thật trên Windows.
+Docker Compose dùng Prometheus làm metrics collector/store. Prometheus đọc cấu hình tại `infra/prometheus/prometheus.yml`, scrape Backend `/actuator/prometheus`, AI Worker `/metrics`, Redis exporter, MariaDB exporter, RabbitMQ Prometheus endpoint, MinIO metrics endpoint và node-exporter.
 
-Docker Compose Phase 8 cấu hình `monitoring-service` theo hướng Linux host metrics:
+Nginx chỉ proxy các endpoint Prometheus cần cho frontend:
 
-```yaml
-privileged: true
-volumes:
-  - /proc:/host/proc:ro
-  - /sys:/host/sys:ro
-  - /:/host/root:ro
-environment:
-  HOST_PROC: /host/proc
-  HOST_SYS: /host/sys
-  HOST_ROOT: /host/root
+```text
+/prometheus/api/v1/query
+/prometheus/-/healthy
 ```
 
-`monitoring-service` dùng `psutil.PROCFS_PATH` và `HOST_ROOT` để đọc host Linux thật. Trên Docker Desktop Windows, container chạy trong Linux VM nên không bảo đảm phản ánh Windows host thật.
+Frontend tự query Prometheus API qua Nginx và map kết quả về shape Dashboard UI. Không còn `monitoring-service` hay `/api/dashboard/metrics` aggregator riêng.
 
-GPU vẫn optional qua `nvidia-smi`; nếu không có NVIDIA/tooling thì Dashboard hiển thị `N/A`.
-
-`/api/dashboard/metrics` được cache trong Redis bằng key ngắn hạn, TTL mặc định `MONITORING_CACHE_TTL_SECONDS=2`. Mục tiêu là giảm scrape lặp từ nhiều dashboard/browser nhưng vẫn đủ gần realtime cho UI và cơ chế chặn mở thêm camera preview khi tải hệ thống ≥ 80%.
+Node-exporter chạy trong container và phản ánh Linux VM/container context trên Docker Desktop Windows, không bảo đảm đúng Windows host thật. GPU chưa có exporter riêng nên Dashboard hiển thị `N/A` nếu không thêm DCGM/NVIDIA exporter sau này.
 
 ---
 
@@ -223,8 +167,8 @@ docker compose up --build -d
 Invoke-WebRequest http://localhost:3000/health -UseBasicParsing
 Invoke-RestMethod http://localhost:3000/actuator/health
 Invoke-RestMethod http://localhost:3000/worker/health
-Invoke-RestMethod http://localhost:3000/monitoring/health
-Invoke-RestMethod http://localhost:3000/api/dashboard/metrics
+Invoke-RestMethod http://localhost:3000/prometheus/-/healthy
+Invoke-RestMethod "http://localhost:3000/prometheus/api/v1/query?query=up"
 ```
 
 ```bash
@@ -233,8 +177,8 @@ docker compose up --build -d
 curl http://localhost:3000/health
 curl http://localhost:3000/actuator/health
 curl http://localhost:3000/worker/health
-curl http://localhost:3000/monitoring/health
-curl http://localhost:3000/api/dashboard/metrics
+curl http://localhost:3000/prometheus/-/healthy
+curl "http://localhost:3000/prometheus/api/v1/query?query=up"
 ```
 
 App entrypoint local: `http://localhost:3000`.
@@ -267,4 +211,4 @@ Compose Phase 8 phục vụ containerization/shadow testing. Chưa bao gồm:
 
 ---
 
-*Tài liệu phản ánh trạng thái infrastructure tại **Giai đoạn 8**. Native dev vẫn dùng `setup.ps1`/`setup.sh` + `docker-compose.dev.yml`; container runtime dùng root `.env` + `docker-compose.yml` full stack.*
+*Tài liệu phản ánh trạng thái infrastructure tại **Giai đoạn 9**. Runtime chính dùng root `.env` + `docker-compose.yml` full stack; runtime manager/native dev scripts đã được loại bỏ.*

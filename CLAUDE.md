@@ -10,9 +10,7 @@ FireSafe is a local-first fire/smoke monitoring system:
 - `frontend/` — Next.js dashboard, login, alerts, cameras, AI Worker RTSP preview controls.
 - `ai-worker/` — Python RTSP HTTP service, MJPEG preview, YOLO detect, MinIO upload, backend alert POST.
 - `video-detect/` — offline YOLO video/image debug CLI.
-- `mock-worker/` — independent backend E2E tester.
-- `docker-compose.dev.yml` — local infrastructure only: MariaDB, Redis, RabbitMQ, MinIO, Adminer, RedisInsight.
-- `setup.ps1` — Windows runtime manager for infra + backend + frontend + AI Worker.
+- `docker-compose.yml` — full stack runtime: app services, infra, Nginx, Prometheus/exporters.
 
 Start by reading:
 
@@ -38,9 +36,9 @@ Read and follow these rule files before non-trivial work:
 
 ## Runtime policy
 
-- Use `setup.ps1 up` for normal local runtime.
-- Use `setup.ps1 down` to stop runtime and remove `.runtime/` only.
-- Use `setup.ps1 clean` for aggressive cleanup: Docker containers/images/volumes/orphans plus generated local artifacts.
+- Use `docker compose up --build -d` for normal local runtime.
+- Use `docker compose down` to stop runtime.
+- Use `docker compose down -v --remove-orphans` only for aggressive cleanup when volumes can be removed.
 - Do not commit generated/local files: `.runtime/`, `venv/`, `node_modules/`, `.next/`, `backend/target/`, local JDK, model `.pt`, `video-detect/runs/`.
 
 ## Documentation policy
@@ -59,14 +57,13 @@ Service mapping:
 | `frontend/` | `docs/explanations/frontend-explanation.md` |
 | `ai-worker/` | `docs/explanations/ai-worker-explanation.md` |
 | `video-detect/` | `docs/explanations/video-detect-explanation.md` |
-| `mock-worker/` | `docs/explanations/mock-worker-explanation.md` |
-| `docker-compose*.yml`, `setup.ps1` | `docs/explanations/infrastructure-explanation.md` |
+| `docker-compose.yml`, `infra/` | `docs/explanations/infrastructure-explanation.md` |
 | project roadmap/context | `docs/plannings/planning.md` |
 
 ## Security / secrets
 
-- `backend/.env.local` may contain private RTSP credentials. Never print or commit real credentials.
-- Keep `.env.local` files local; commit only `.env.local.example` templates.
+- Root `.env` may contain private RTSP credentials. Never print or commit real credentials.
+- Keep local env files uncommitted; commit only safe templates such as `.env.example`.
 - Treat default credentials as development-only.
 
 ## Git policy
