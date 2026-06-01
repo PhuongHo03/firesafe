@@ -34,6 +34,17 @@ backend/target/
 backend/.mvn/wrapper/maven-wrapper.jar
 jdk-*/
 
+# Local-only project instructions/docs
+.agents/
+CLAUDE.md
+docs/planning/
+docs/plannings/
+frontend/AGENTS.md
+frontend/CLAUDE.md
+frontend/README.md
+frontend/.gitingnore
+frontend/.gitignore
+
 # IDE / OS
 .idea/
 .vscode/
