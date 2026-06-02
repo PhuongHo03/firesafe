@@ -21,6 +21,7 @@ frontend/
     │   ├── alerts/page.tsx     ← Route `/alerts` → AlertsScreen
     │   ├── alerts/[id]/page.tsx← Route `/alerts/[id]` → AlertDetailScreen
     │   ├── cameras/page.tsx    ← Route `/cameras` → CamerasScreen
+    │   ├── logs/page.tsx       ← Route `/logs` → LogsScreen
     │   └── admin/users/page.tsx← Route `/admin/users` → AdminUsersScreen
     │
     ├── features/               ← Feature-based layered modules
@@ -29,6 +30,7 @@ frontend/
     │   ├── cameras/            ← api/components/dtos/hooks/screens/states/types
     │   ├── dashboard/          ← components/dtos/hooks/screens/states/types
     │   ├── monitoring/         ← api/dtos/hooks/states/types
+    │   ├── logs/               ← api/hooks/screens/types
     │   └── admin-users/        ← api/components/dtos/hooks/screens/states/types
     │
     ├── layouts/
@@ -79,12 +81,12 @@ Mặc định:
 http://localhost:3000
 ```
 
-Trong Docker Compose, frontend image được build với `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_AI_WORKER_URL`, `NEXT_PUBLIC_PROMETHEUS_URL` để trống. Browser gọi same-origin qua Nginx:
+Trong Docker Compose, frontend image được build với `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_AI_WORKER_URL` để trống. Browser gọi same-origin qua Nginx:
 
 ```text
 /api/v1/...               -> backend
 /api/cameras/...          -> AI Worker
-/prometheus/api/v1/query  -> Prometheus
+/api/admin/metrics        -> backend (Prometheus internal)
 ```
 
 ### Chạy thủ công frontend từ source
@@ -100,7 +102,7 @@ npm start       # Chạy production build
 
 ## 🔧 Cấu hình
 
-Prefix `NEXT_PUBLIC_` bắt buộc để biến được expose ra phía client (browser). Docker Compose để các giá trị `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_AI_WORKER_URL`, `NEXT_PUBLIC_PROMETHEUS_URL` trống trong root `.env`, nên frontend gọi same-origin qua Nginx (`/api/v1`, `/api/cameras`, `/prometheus/api/v1/query`). Vì Next.js bake `NEXT_PUBLIC_*` vào bundle lúc build, đổi public URL/port thì cần rebuild frontend image. Nếu đặt explicit URL, URL đó phải browser truy cập được, không dùng tên service nội bộ như `http://backend:8080`.
+Prefix `NEXT_PUBLIC_` bắt buộc để biến được expose ra phía client (browser). Docker Compose để các giá trị `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_AI_WORKER_URL` trống trong root `.env`, nên frontend gọi same-origin qua Nginx (`/api/v1`, `/api/cameras`, `/api/admin/metrics`). Vì Next.js bake `NEXT_PUBLIC_*` vào bundle lúc build, đổi public URL/port thì cần rebuild frontend image. Nếu đặt explicit URL, URL đó phải browser truy cập được, không dùng tên service nội bộ như `http://backend:8080`.
 
 ---
 
@@ -108,12 +110,12 @@ Prefix `NEXT_PUBLIC_` bắt buộc để biến được expose ra phía client 
 
 ### `src/shared/utils/http.ts` + `src/features/*/api/` — API Layer
 
-`src/shared/utils/http.ts` chỉ giữ request helpers dùng chung (`request`, `requestAI`, `requestPrometheus`) và base URL public. API theo nghiệp vụ nằm trong từng feature (`features/auth/api`, `features/alerts/api`, `features/cameras/api`, `features/monitoring/api`, `features/admin-users/api`). Nếu `NEXT_PUBLIC_*` không được set, base URL là chuỗi rỗng để request đi same-origin qua Nginx:
+`src/shared/utils/http.ts` chỉ giữ request helpers dùng chung (`request`, `requestAI`) và base URL public. API theo nghiệp vụ nằm trong từng feature (`features/auth/api`, `features/alerts/api`, `features/cameras/api`, `features/monitoring/api`, `features/admin-users/api`). Nếu `NEXT_PUBLIC_*` không được set, base URL là chuỗi rỗng để request đi same-origin qua Nginx:
 
 ```text
 /api/v1/...               -> backend
 /api/cameras/...          -> worker
-/prometheus/api/v1/query  -> Prometheus
+/api/admin/metrics        -> backend (Prometheus internal)
 ```
 
 Các method chính theo feature:
@@ -132,7 +134,8 @@ camerasApi.startCameraDetection(camera)        // → CameraDetectionStatus
 camerasApi.stopCameraDetection(cameraId)       // → CameraDetectionStatus
 camerasApi.getCameraDetectionStatus(cameraId)  // → CameraDetectionStatus
 camerasApi.getCameraStreamUrl(cameraId)        // → MJPEG stream URL
-monitoringApi.getDashboardMetrics()            // → Query Prometheus và map thành DashboardMetrics
+monitoringApi.getDashboardMetrics(token)       // → backend GET /api/admin/metrics (15s auto-refresh)
+logsApi.getWorkerMonitoringSummary()           // → worker GET /api/monitoring/summary (2s auto-refresh)
 usersApi.getUsers(token)                       // → UserAccount[]
 usersApi.updateUser(id, data, token)           // → UserAccount
 ```
@@ -275,6 +278,19 @@ Hiển thị:
 
 Form thêm camera yêu cầu: Tên, Vị trí, RTSP URL. Trang `/cameras` poll trạng thái AI Worker mỗi 10 giây, hiển thị lỗi RTSP nếu worker trả về `error`, và dùng `<img>` để render stream `/api/cameras/{id}/stream.mjpg` khi detect đang chạy. UI cho phép mở nhiều preview MJPEG; trước khi mở thêm preview sẽ query Prometheus qua `/prometheus/api/v1/query`, lấy mức tải cao nhất giữa CPU/RAM/GPU và chặn nếu ≥ 80% để tránh làm máy/Nginx/worker quá tải. Nếu worker đang lỗi/retry RTSP, UI vẫn hiện nút **Stop** để người dùng dừng worker thay vì hiện **Start Detect** gây spam start.
 
+### `/logs` — Runtime Logs
+
+Trang `/logs` hiển thị snapshot mới nhất từ AI Worker `GET /api/monitoring/summary` với auto-refresh mỗi 2 giây. Trang này thay cho lệnh PowerShell polling monitoring summary, nhưng render dạng structured cards/table thay vì raw JSON.
+
+Nội dung chính:
+
+- Worker status, số camera worker đang detect, số shared RTSP sources.
+- Inference scheduler: running, registered cameras, max batch size, max wait, tổng batches, tổng frames inferred, average batch size, average inference ms, tổng errors.
+- Camera runtime table: camera ID, running, has frame, detections total, alerts total, average inference, last alert, error.
+- Value explanations hiển thị trực tiếp trong UI theo bố cục `giá trị hiện tại | ý nghĩa`.
+
+Trang `/logs` không lưu database/localStorage/sessionStorage. Đây là runtime latest snapshot trong React state; lịch sử metrics dài hạn vẫn thuộc Prometheus, business alerts vẫn thuộc MariaDB.
+
 ---
 
 ## 🎨 Design System
@@ -309,4 +325,4 @@ CSS Variables được định nghĩa trong `globals.css`:
 
 ---
 
-*Tài liệu phản ánh trạng thái frontend tại **Giai đoạn 9**. Frontend dùng cấu trúc feature-based (`src/app` route mỏng → `src/features/*/screens` → hooks/API/types theo feature), có login/register viewer-pending-activation (`@nhattienchung.vn`), `/admin/users` để Admin kích hoạt/chỉnh role, Dashboard tổng quan query Prometheus qua Nginx và map thành metrics UI, trang `/alerts` quản lý danh sách/xóa alert theo quyền, trang `/cameras` tích hợp Worker RTSP preview/detect realtime, và có Dockerfile để build bằng root `.env`/Compose; WebSocket real-time sẽ bổ sung sau nếu cần.*
+*Tài liệu phản ánh trạng thái frontend tại **Giai đoạn 9**. Frontend dùng cấu trúc feature-based (`src/app` route mỏng → `src/features/*/screens` → hooks/API/types theo feature), có login/register viewer-pending-activation (`@nhattienchung.vn`), `/admin/users` để Admin kích hoạt/chỉnh role, Dashboard tổng quan query Prometheus qua Nginx và map thành metrics UI, trang `/alerts` quản lý danh sách/xóa alert theo quyền, trang `/cameras` tích hợp Worker RTSP preview/detect realtime, trang `/logs` hiển thị AI Worker runtime monitoring snapshot dạng cards/table, và có Dockerfile để build bằng root `.env`/Compose; WebSocket real-time sẽ bổ sung sau nếu cần.*

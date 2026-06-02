@@ -28,6 +28,7 @@ backend/
     │   │   ├── controllers/                         ← REST API — nhận request, trả response
     │   │   │   ├── AuthController.java              ← POST /api/v1/auth/login/register
     │   │   │   ├── AlertController.java             ← GET/POST/DELETE /api/v1/alerts
+    │   │   │   ├── AdminMetricsController.java      ← GET /api/admin/metrics (ADMIN only)
     │   │   │   ├── CameraController.java            ← CRUD /api/v1/cameras
     │   │   │   ├── MetricsExportController.java     ← GET /api/v1/metrics/export
     │   │   │   ├── MonitoringController.java        ← GET /api/v1/monitoring/summary
@@ -39,6 +40,7 @@ backend/
     │   │   │   ├── AlertRequest.java / AlertResponse.java
     │   │   │   ├── AlertReservationRequest.java / AlertReservationResponse.java
     │   │   │   ├── CameraRequest.java / CameraResponse.java
+    │   │   │   ├── AdminMetricsResponse.java
     │   │   │   └── MetricsExportResponse.java / MonitoringSummaryResponse.java
     │   │   │
     │   │   ├── models/                              ← ORM Model — ánh xạ Java class ↔ bảng DB
@@ -58,7 +60,7 @@ backend/
     │   │   │   ├── AuthService.java                 ← Login/register + JWT
     │   │   │   ├── CameraService.java               ← CRUD logic cho cameras
     │   │   │   ├── MetricsExportService.java        ← Tổng hợp metrics nhẹ cho Prometheus/dashboard
-    │   │   │   ├── MonitoringService.java           ← Summary cũ cho dashboard
+    │   │   │   ├── MonitoringService.java           ← Summary cũ + query Prometheus internal + Redis cache admin metrics
     │   │   │   ├── UserService.java                 ← ADMIN quản lý user/role
     │   │   │   ├── UserDetailsServiceImpl.java      ← Load user từ DB cho Spring Security
     │   │   │   ├── MinioService.java                ← Upload ảnh, tạo pre-signed URL
@@ -406,6 +408,22 @@ Queue "alert.notification.queue"
 ```
 Chạy **bất đồng bộ** — `AlertService` không cần chờ notification xong mới trả response.
 Retry config đọc từ `application.yml`: `notification.retry.*`
+
+#### `MonitoringService.java` — Admin Metrics Dashboard
+Backend query internal Prometheus, map normalized metrics và cache Redis snapshot:
+```
+Frontend GET /api/admin/metrics (admin only)
+    → Backend MonitoringService
+        → Redis cache check "admin:metrics:snapshot"
+            ├── HIT → deserialize JSON → trả AdminMetricsResponse
+            └── MISS → query Prometheus qua internal `http://prometheus:9090/api/v1/query`
+                → aggregate metrics từ backend/worker/exporters
+                → merge DB stats (alerts/cameras count)
+                → normalize thành AdminMetricsResponse
+                → cache Redis TTL 10s
+                → trả AdminMetricsResponse
+```
+Endpoint `/api/admin/metrics` yêu cầu `ROLE_ADMIN` trong Spring Security. Response shape giống frontend `DashboardMetrics`. Frontend auto-refresh 15s mặc định. Redis cache giúp không spam Prometheus query khi nhiều admin hoặc browser refresh. Prometheus internal URL config qua `firesafe.prometheus.base-url`.
 
 ---
 

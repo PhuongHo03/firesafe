@@ -5,7 +5,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import { Flame, LayoutDashboard, Camera, LogOut, ListChecks, Users } from "lucide-react";
+import { Flame, LayoutDashboard, Camera, LogOut, ListChecks, Users, ScrollText } from "lucide-react";
 import { clearAuth, getUser, isAdmin } from "@/shared/utils/auth";
 
 export default function Sidebar() {
@@ -31,6 +31,7 @@ export default function Sidebar() {
     ...(admin ? [{ href: "/admin/users", icon: Users, label: "Users" }] : []),
     { href: "/alerts", icon: ListChecks, label: "Alerts" },
     { href: "/cameras", icon: Camera, label: "Cameras" },
+    { href: "/logs", icon: ScrollText, label: "Logs" },
   ];
 
   return (

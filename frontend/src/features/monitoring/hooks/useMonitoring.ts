@@ -17,10 +17,13 @@ export function useMonitoring() {
   const [error, setError] = useState(INITIAL_MONITORING_STATE.error);
 
   const load = useCallback(async () => {
+    const token = getToken();
+    if (!token) return;
+
     setRefreshing(true);
     setError(null);
     try {
-      setMetrics(normalizeDashboardMetrics(await monitoringApi.getDashboardMetrics()));
+      setMetrics(normalizeDashboardMetrics(await monitoringApi.getDashboardMetrics(token)));
     } catch {
       setError(toMonitoringError());
     } finally {

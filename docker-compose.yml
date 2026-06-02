@@ -107,6 +107,11 @@ services:
       TELEGRAM_ENABLED: ${TELEGRAM_ENABLED:-false}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      PREVIEW_CPU_THRESHOLD: ${PREVIEW_CPU_THRESHOLD:-80}
+      PREVIEW_TTL_SEC: ${PREVIEW_TTL_SEC:-120}
+      PREVIEW_KEEPALIVE_SEC: ${PREVIEW_KEEPALIVE_SEC:-30}
+      PREVIEW_MAX_GLOBAL: ${PREVIEW_MAX_GLOBAL:-4}
+      FIRESAFE_PROMETHEUS_BASE_URL: ${FIRESAFE_PROMETHEUS_BASE_URL:-http://prometheus:9090}
     expose:
       - "8080"
     depends_on:
@@ -245,7 +250,6 @@ services:
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
         NEXT_PUBLIC_AI_WORKER_URL: ${NEXT_PUBLIC_AI_WORKER_URL:-}
-        NEXT_PUBLIC_PROMETHEUS_URL: ${NEXT_PUBLIC_PROMETHEUS_URL:-}
     image: firesafe-frontend:latest
     container_name: firesafe-frontend
     environment:
@@ -253,7 +257,6 @@ services:
       PORT: 3000
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
       NEXT_PUBLIC_AI_WORKER_URL: ${NEXT_PUBLIC_AI_WORKER_URL:-}
-      NEXT_PUBLIC_PROMETHEUS_URL: ${NEXT_PUBLIC_PROMETHEUS_URL:-}
     expose:
       - "3000"
     depends_on:

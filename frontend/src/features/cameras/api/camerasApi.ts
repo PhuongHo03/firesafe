@@ -1,5 +1,5 @@
 import { getAIWorkerUrl, request, requestAI } from "@/shared/utils/http";
-import { Camera, CameraDetectionStatus } from "@/features/cameras/types/camera";
+import { Camera, CameraDetectionStatus, PreviewReservation, PreviewReservationsResponse } from "@/features/cameras/types/camera";
 
 export const camerasApi = {
   getCameras(token: string) {
@@ -39,6 +39,33 @@ export const camerasApi = {
 
   getCameraDetectionStatus(cameraId: number) {
     return requestAI<CameraDetectionStatus>(`/api/cameras/${cameraId}/status`);
+  },
+
+  reserveCameraPreview(cameraId: number, token: string) {
+    return request<PreviewReservation>(`/api/v1/cameras/${cameraId}/preview/reserve`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  },
+
+  keepAliveCameraPreview(cameraId: number, token: string) {
+    return request<PreviewReservation>(`/api/v1/cameras/${cameraId}/preview/keepalive`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  },
+
+  releaseCameraPreview(cameraId: number, token: string) {
+    return request<PreviewReservation>(`/api/v1/cameras/${cameraId}/preview/release`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  },
+
+  getMyPreviewReservations(token: string) {
+    return request<PreviewReservationsResponse>("/api/v1/cameras/preview/my", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
   },
 
   getCameraStreamUrl(cameraId: number) {

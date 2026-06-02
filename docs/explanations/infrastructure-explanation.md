@@ -48,13 +48,12 @@ Compose publish app qua Nginx tại `http://localhost:${FRONTEND_PORT}`. `fronte
 |---|---|
 | `/` | `frontend:3000` |
 | `/api/v1/` | `backend:8080` |
+| `/api/admin/` | `backend:8080` |
 | `/actuator/` | `backend:8080` |
 | `/swagger-ui/`, `/swagger-ui.html`, `/v3/api-docs/` | `backend:8080` |
 | `/api/cameras/` | `worker:8090` |
+| `/api/monitoring/` | `worker:8090` |
 | `/worker/health` | `worker:8090/health` |
-| `/prometheus/api/v1/query` | `prometheus:9090/api/v1/query` |
-| `/prometheus/-/healthy` | `prometheus:9090/-/healthy` |
-| `/health` | Nginx local health |
 
 `/api/cameras/` tắt proxy buffering/cache và tăng timeout để MJPEG stream không bị stall. Nginx dùng Docker DNS resolver `127.0.0.11` với TTL ngắn để tránh lỗi 502 do giữ IP container cũ sau khi `worker`/service bị recreate.
 
@@ -91,7 +90,7 @@ Compose publish app qua Nginx tại `http://localhost:${FRONTEND_PORT}`. `fronte
 Root `.env.example` là superset biến deploy cho tất cả service:
 
 - public bind/ports: `APP_BIND_ADDRESS=0.0.0.0` để máy cùng LAN truy cập app qua IP host, `FRONTEND_PORT` cho Nginx app entrypoint, infra ports `7001–7010`
-- frontend public URLs: `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_AI_WORKER_URL`, `NEXT_PUBLIC_PROMETHEUS_URL` (để trống để dùng same-origin Nginx)
+- frontend public URLs: `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_AI_WORKER_URL` (để trống để dùng same-origin Nginx)
 - DB/RabbitMQ/MinIO creds
 - runtime timezone: `TZ` mặc định `ICT-7` (UTC+7, container-safe) để tất cả containers dùng giờ Việt Nam
 - backend auth: `JWT_SECRET`, `FIRESAFE_USERNAME`, `FIRESAFE_PASSWORD`
@@ -132,14 +131,7 @@ Nếu Hugging Face repo/model yêu cầu auth, set `HF_TOKEN` trong root `.env`.
 
 Docker Compose dùng Prometheus làm metrics collector/store. Prometheus đọc cấu hình tại `infra/prometheus/prometheus.yml`, scrape Backend `/actuator/prometheus`, AI Worker `/metrics`, Redis exporter, MariaDB exporter, RabbitMQ Prometheus endpoint, MinIO metrics endpoint và node-exporter.
 
-Nginx chỉ proxy các endpoint Prometheus cần cho frontend:
-
-```text
-/prometheus/api/v1/query
-/prometheus/-/healthy
-```
-
-Frontend tự query Prometheus API qua Nginx và map kết quả về shape Dashboard UI. Không còn `monitoring-service` hay `/api/dashboard/metrics` aggregator riêng.
+Backend query Prometheus nội bộ qua internal URL `http://prometheus:9090/api/v1/query`, aggregate/normalize metrics và cache Redis snapshot TTL 10s. Frontend gọi `GET /api/admin/metrics` qua Nginx, không trực tiếp gọi Prometheus. Auto-refresh frontend default 15s.
 
 Node-exporter chạy trong container và phản ánh Linux VM/container context trên Docker Desktop Windows, không bảo đảm đúng Windows host thật. GPU chưa có exporter riêng nên Dashboard hiển thị `N/A` nếu không thêm DCGM/NVIDIA exporter sau này.
 
@@ -167,8 +159,6 @@ docker compose up --build -d
 Invoke-WebRequest http://localhost:3000/health -UseBasicParsing
 Invoke-RestMethod http://localhost:3000/actuator/health
 Invoke-RestMethod http://localhost:3000/worker/health
-Invoke-RestMethod http://localhost:3000/prometheus/-/healthy
-Invoke-RestMethod "http://localhost:3000/prometheus/api/v1/query?query=up"
 ```
 
 ```bash
@@ -177,8 +167,6 @@ docker compose up --build -d
 curl http://localhost:3000/health
 curl http://localhost:3000/actuator/health
 curl http://localhost:3000/worker/health
-curl http://localhost:3000/prometheus/-/healthy
-curl "http://localhost:3000/prometheus/api/v1/query?query=up"
 ```
 
 App entrypoint local: `http://localhost:3000`.

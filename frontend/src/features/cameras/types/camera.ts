@@ -14,6 +14,18 @@ export interface CameraDetectionStatus {
   hasFrame?: boolean;
 }
 
+export interface PreviewReservation {
+  reserved: boolean;
+  cameraId: number;
+  ttlSec: number;
+  keepaliveSec: number;
+  reason: string | null;
+}
+
+export interface PreviewReservationsResponse {
+  reservations: PreviewReservation[];
+}
+
 export interface CameraFormState {
   name: string;
   rtspUrl: string;

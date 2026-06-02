@@ -15,3 +15,8 @@ export function getAlertStatusText(status: Alert["status"]) {
 export function formatAlertDateTime(value: string) {
   return new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "medium", timeZone: "Asia/Ho_Chi_Minh" }).format(new Date(value));
 }
+
+export function replaceMinIOInternalUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  return url.replace(/^http:\/\/minio:9000/, "");
+}

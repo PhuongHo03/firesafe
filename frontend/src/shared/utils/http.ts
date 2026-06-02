@@ -1,7 +1,6 @@
 // Centralized HTTP helpers — empty env means same-origin reverse proxy
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 const AI_WORKER_URL = process.env.NEXT_PUBLIC_AI_WORKER_URL ?? "";
-const PROMETHEUS_URL = process.env.NEXT_PUBLIC_PROMETHEUS_URL ?? "";
 const REQUEST_TIMEOUT_MS = 30000;
 
 export async function request<T>(
@@ -37,18 +36,6 @@ export async function requestAI<T>(
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(err.error ?? "AI Worker error");
-  }
-  return res.json() as Promise<T>;
-}
-
-export async function requestPrometheus<T>(query: string): Promise<T> {
-  const signal = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
-  const basePath = PROMETHEUS_URL ? `${PROMETHEUS_URL}/api/v1/query` : "/prometheus/api/v1/query";
-  const url = `${basePath}?query=${encodeURIComponent(query)}`;
-  const res = await fetch(url, { signal });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error ?? "Prometheus query error");
   }
   return res.json() as Promise<T>;
 }

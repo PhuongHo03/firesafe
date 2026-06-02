@@ -2,6 +2,10 @@
 .runtime/
 .claude/
 logs/
+!frontend/src/app/logs/
+!frontend/src/app/logs/**
+!frontend/src/features/logs/
+!frontend/src/features/logs/**
 *.log
 
 # Env / secrets
