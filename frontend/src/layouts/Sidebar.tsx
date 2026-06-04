@@ -26,13 +26,18 @@ export default function Sidebar() {
 
   const label = user?.roles.includes("ROLE_ADMIN") ? "Admin" : user ? "Viewer" : "";
 
-  const links = [
-    { href: "/", icon: LayoutDashboard, label: "Dashboard" },
-    ...(admin ? [{ href: "/admin/users", icon: Users, label: "Users" }] : []),
-    { href: "/alerts", icon: ListChecks, label: "Alerts" },
-    { href: "/cameras", icon: Camera, label: "Cameras" },
-    { href: "/logs", icon: ScrollText, label: "Logs" },
-  ];
+  const links = admin
+    ? [
+        { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
+        { href: "/admin/users", icon: Users, label: "Users" },
+        { href: "/alerts", icon: ListChecks, label: "Alerts" },
+        { href: "/cameras", icon: Camera, label: "Cameras" },
+        { href: "/logs", icon: ScrollText, label: "Logs" },
+      ]
+    : [
+        { href: "/alerts", icon: ListChecks, label: "Alerts" },
+        { href: "/cameras", icon: Camera, label: "Cameras" },
+      ];
 
   return (
     <aside style={{

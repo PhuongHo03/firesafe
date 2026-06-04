@@ -66,6 +66,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/admin/metrics").hasRole("ADMIN")
                 // Camera management: only ADMIN can create/update/delete
                 .requestMatchers(HttpMethod.GET, "/api/v1/cameras/**").hasAnyRole("ADMIN", "VIEWER")
+                .requestMatchers(HttpMethod.POST, "/api/v1/cameras/*/preview/**").hasAnyRole("ADMIN", "VIEWER")
                 .requestMatchers(HttpMethod.POST, "/api/v1/cameras/**").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.PUT, "/api/v1/cameras/**").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.DELETE, "/api/v1/cameras/**").hasRole("ADMIN")

@@ -38,23 +38,22 @@ export default function CameraCard({ camera, admin, status, busy, busyAction, pr
   const showStartButton = isNotStarted && !isStopping;
 
   return (
-    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.75rem", padding: "1.25rem", minWidth: 0 }}>
+    <div style={{ position: "relative", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.75rem", padding: "1.25rem", minWidth: 0 }}>
+      <Link href={`/cameras/${camera.id}`} aria-label={`Xem chi tiết ${camera.name}`} style={cardLinkOverlay} />
       <div style={{ background: "#020617", border: "1px solid var(--border)", borderRadius: "0.6rem", aspectRatio: "16/9", overflow: "hidden", marginBottom: "1rem", display: "flex", alignItems: "center", justifyContent: "center" }}>
         {isDetecting && previewing ? (
           <div style={{ position: "relative", width: "100%", height: "100%" }}>
-            <Link href={`/cameras/${camera.id}`} style={{ display: "block", width: "100%", height: "100%", color: "inherit", textDecoration: "none" }}>
-              <img src={camerasApi.getCameraStreamUrl(camera.id)} alt={`Live ${camera.name}`} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
-              <span style={{ position: "absolute", left: "0.6rem", bottom: "0.6rem", display: "inline-flex", alignItems: "center", gap: "0.35rem", background: "rgba(15,23,42,0.82)", border: "1px solid rgba(148,163,184,0.28)", borderRadius: "0.45rem", padding: "0.35rem 0.55rem", fontSize: "0.75rem", fontWeight: 600 }}>
-                <ExternalLink size={12} /> Chi tiết
-              </span>
-            </Link>
-            <button type="button" onClick={() => onHidePreview(camera.id)} style={{ position: "absolute", top: "0.5rem", right: "0.5rem", ...btnStyle, background: "rgba(15,23,42,0.85)", color: "#fff", padding: "0.35rem 0.75rem" }}>
+            <img src={camerasApi.getCameraStreamUrl(camera.id)} alt={`Live ${camera.name}`} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+            <span style={{ position: "absolute", left: "0.6rem", bottom: "0.6rem", display: "inline-flex", alignItems: "center", gap: "0.35rem", background: "rgba(15,23,42,0.82)", border: "1px solid rgba(148,163,184,0.28)", borderRadius: "0.45rem", padding: "0.35rem 0.55rem", fontSize: "0.75rem", fontWeight: 600 }}>
+              <ExternalLink size={12} /> Chi tiết
+            </span>
+            <button type="button" onClick={() => onHidePreview(camera.id)} style={{ position: "absolute", zIndex: 2, top: "0.5rem", right: "0.5rem", ...btnStyle, background: "rgba(15,23,42,0.85)", color: "#fff", padding: "0.35rem 0.75rem" }}>
               Ẩn preview
             </button>
           </div>
         ) : isDetecting && !previewing ? (
           <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "0.75rem" }}>
-            <button type="button" onClick={() => onShowPreview(camera.id)} style={{ display: "inline-flex", alignItems: "center", gap: "0.45rem", ...btnStyle, background: "var(--surface-2)", color: "var(--text)" }}>
+            <button type="button" onClick={() => onShowPreview(camera.id)} style={{ position: "relative", zIndex: 2, display: "inline-flex", alignItems: "center", gap: "0.45rem", ...btnStyle, background: "var(--surface-2)", color: "var(--text)" }}>
               <Video size={15} /> Mở stream
             </button>
             <div style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>Đang detect, preview chưa được cấp</div>
@@ -91,16 +90,21 @@ export default function CameraCard({ camera, admin, status, busy, busyAction, pr
         {camera.rtspUrl}
       </div>
 
-      <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", justifyContent: "space-between" }}>
-        {admin && (showStartButton ? (
-          <button id={`start-detect-${camera.id}`} disabled={busy} onClick={() => onStartDetection(camera.id)} style={{ display: "flex", alignItems: "center", gap: "0.35rem", ...btnStyle, background: "var(--accent)", color: "#fff", cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.7 : 1 }}>
-            {isStarting ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Play size={13} />} {isStarting ? "Đang bật..." : "Start Detect"}
-          </button>
-        ) : (
-          <button id={`stop-detect-${camera.id}`} disabled={busy} onClick={() => onStopDetection(camera.id)} style={{ display: "flex", alignItems: "center", gap: "0.35rem", ...btnStyle, background: "var(--surface-2)", color: "var(--text)", cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.7 : 1 }}>
-            {isStopping ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Square size={13} />} {isStopping ? "Đang dừng..." : "Stop"}
-          </button>
-        ))}
+      <div style={{ position: "relative", zIndex: 2, display: "flex", gap: "0.75rem", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+          {admin && (showStartButton ? (
+            <button id={`start-detect-${camera.id}`} disabled={busy} onClick={() => onStartDetection(camera.id)} style={{ display: "flex", alignItems: "center", gap: "0.35rem", ...btnStyle, background: "var(--accent)", color: "#fff", cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.7 : 1 }}>
+              {isStarting ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Play size={13} />} {isStarting ? "Đang bật..." : "Start Detect"}
+            </button>
+          ) : (
+            <button id={`stop-detect-${camera.id}`} disabled={busy} onClick={() => onStopDetection(camera.id)} style={{ display: "flex", alignItems: "center", gap: "0.35rem", ...btnStyle, background: "var(--surface-2)", color: "var(--text)", cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.7 : 1 }}>
+              {isStopping ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Square size={13} />} {isStopping ? "Đang dừng..." : "Stop"}
+            </button>
+          ))}
+          <Link href={`/cameras/${camera.id}`} style={detailLinkStyle}>
+            <ExternalLink size={13} /> Chi tiết
+          </Link>
+        </div>
 
         {admin && (
           <button id={`delete-cam-${camera.id}`} onClick={() => onDeleteCamera(camera.id, camera.name)} style={{ display: "flex", alignItems: "center", gap: "0.3rem", background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", fontSize: "0.8rem", padding: 0 }}>
@@ -112,4 +116,6 @@ export default function CameraCard({ camera, admin, status, busy, busyAction, pr
   );
 }
 
+const cardLinkOverlay: React.CSSProperties = { position: "absolute", inset: 0, zIndex: 1, borderRadius: "0.75rem" };
 const btnStyle: React.CSSProperties = { border: "none", borderRadius: "0.5rem", padding: "0.5rem 1.25rem", cursor: "pointer", fontSize: "0.875rem", fontWeight: 600 };
+const detailLinkStyle: React.CSSProperties = { display: "inline-flex", alignItems: "center", gap: "0.35rem", color: "var(--text-muted)", textDecoration: "none", fontSize: "0.8rem", fontWeight: 600 };

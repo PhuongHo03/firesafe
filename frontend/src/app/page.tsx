@@ -1,5 +1,5 @@
-import DashboardScreen from "@/features/dashboard/screens/DashboardScreen";
+import { redirect } from "next/navigation";
 
-export default function DashboardPage() {
-  return <DashboardScreen />;
+export default function HomePage() {
+  redirect("/cameras");
 }

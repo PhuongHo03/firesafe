@@ -64,6 +64,7 @@ public class CameraWorkerController {
     }
 
     @GetMapping("/{cameraId}/stream.mjpg")
+    @PreAuthorize("hasAnyRole('ADMIN', 'VIEWER')")
     @Operation(summary = "Stream camera MJPEG after authentication and preview reservation checks")
     public ResponseEntity<StreamingResponseBody> streamCamera(@PathVariable Long cameraId, Authentication authentication) {
         ensureCameraExists(cameraId);

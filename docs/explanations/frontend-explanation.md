@@ -15,7 +15,8 @@ frontend/
     ├── app/                    ← App Router (Next.js 16), route files mỏng
     │   ├── layout.tsx          ← Root layout (font Inter, metadata SEO)
     │   ├── globals.css         ← CSS Variables (dark theme)
-    │   ├── page.tsx            ← Route `/` → DashboardScreen
+    │   ├── page.tsx            ← Route `/` → redirect `/cameras`
+    │   ├── dashboard/page.tsx  ← Route `/dashboard` → DashboardScreen
     │   ├── login/page.tsx      ← Route `/login` → LoginScreen
     │   ├── register/page.tsx   ← Route `/register` → RegisterScreen
     │   ├── alerts/page.tsx     ← Route `/alerts` → AlertsScreen
@@ -224,7 +225,7 @@ Ví dụ: `app/cameras/page.tsx` → `features/cameras/screens/CamerasScreen.tsx
 
 Navigation sidebar dùng chung cho tất cả trang (trừ Login). Hiển thị:
 - Logo + brand name
-- Link Dashboard, Alerts, Cameras, Logs và Admin Users với highlight trang hiện tại
+- Admin thấy Dashboard, Users, Alerts, Cameras, Logs; Viewer chỉ thấy Alerts và Cameras
 - Username + role của người đang đăng nhập (`Admin` hoặc `Viewer`)
 - Nút Đăng xuất (xóa cookie → redirect `/login`)
 
@@ -250,7 +251,11 @@ Navigation sidebar dùng chung cho tất cả trang (trừ Login). Hiển thị:
 - Admin phải vào `/admin/users` kích hoạt trước khi user login được
 - Không có chọn role khi đăng ký
 
-### `/` — Dashboard
+### `/` — Home redirect
+
+Route `/` redirect sang `/cameras` để Viewer đăng nhập xong vào thẳng trang được phép xem. Dashboard chuyển sang `/dashboard`.
+
+### `/dashboard` — Dashboard
 
 | Tính năng | Mô tả |
 |---|---|
@@ -288,7 +293,7 @@ Hiển thị:
 | Mọi user | Xem danh sách camera (card grid) |
 | Mọi user | Xem trạng thái detect từ AI Worker |
 | ADMIN | Start/Stop Detect cho từng camera qua AI Worker |
-| ADMIN theo backend security hiện tại | Mở/ẩn stream UI qua preview reservation |
+| Mọi user | Mở/ẩn stream UI qua preview reservation |
 | ADMIN | Nút "Thêm Camera" — form thêm mới |
 | ADMIN | Nút "Xóa" trên từng card |
 
@@ -299,22 +304,22 @@ Flow detection + preview:
 1. Admin bấm **Start Detect** → frontend kiểm tra detection capacity (`GET /api/v1/detection/capacity`): CPU < `DETECTION_CPU_THRESHOLD`, GPU < `DETECTION_GPU_THRESHOLD`
 2. Nếu capacity pass → gọi backend `/api/v1/cameras/{id}/detection/start`; backend lấy RTSP URL từ DB và gọi worker nội bộ. Worker chờ RTSP connect + first frame tối đa 8s rồi trả về status thực tế (`running`, `hasFrame`, `error`).
 3. Nếu RTSP fail → UI hiện **"khối lỗi"** + nút Stop. Worker không chạy detection.
-4. Nếu RTSP OK + có frame → card hiện nút **Mở stream** thay vì tự render MJPEG.
-5. Bấm **Mở stream** → backend kiểm tra preview capacity (`POST /api/v1/cameras/{id}/preview/reserve`): CPU < `PREVIEW_CPU_THRESHOLD`. Theo `SecurityConfig` hiện tại, request POST preview này chỉ pass với ADMIN.
+4. Nếu RTSP OK + có frame → card hiện nút **Mở stream** cho mọi user đã đăng nhập thay vì tự render MJPEG.
+5. Bấm **Mở stream** → backend kiểm tra preview capacity (`POST /api/v1/cameras/{id}/preview/reserve`): CPU < `PREVIEW_CPU_THRESHOLD`. Request preview này pass với ADMIN/VIEWER, nhưng vẫn bị chặn nếu hệ thống quá tải.
 6. Preview pass → card render MJPEG và gửi keepalive định kỳ. Preview fail → UI hiện lý do từ backend, detection vẫn chạy.
 
 Camera có 4 trạng thái: Chưa detect → Đang kết nối → Lỗi → Đang detect (+ stream hoặc quá tải). Nếu đang chạy OK rồi RTSP đứt → worker tự reconnect (exponential backoff 5s→30s), detection tạm dừng rồi tự resume.
 
 Nút **Stop** luôn hiện khi camera đã từng được Start Detect (dù đang lỗi hay đang detect). Khi bấm Stop, UI giữ trạng thái **Đang dừng...** tối thiểu `CAMERA_STOP_MIN_BUSY_MS = 600ms` để tránh nút chớp ngược về Stop trước khi về Start Detect. Nút **Start Detect** chỉ hiện khi camera chưa start / đã stop hẳn.
 
-Khi card đang preview, vùng stream là link tới `/cameras/[id]`. Nếu detection đang chạy nhưng preview chưa được cấp, card không cho click vào trang chi tiết camera.
+Mỗi card camera có thể bấm để vào `/cameras/[id]` bất kể preview đang bật hay chưa. Các nút thao tác như **Mở stream**, **Ẩn preview**, **Start Detect**, **Stop**, **Xóa** vẫn hoạt động riêng và không tự chuyển trang.
 
 ### `/cameras/[id]` — Chi tiết Camera
 
-Trang chi tiết camera chỉ dùng để xem một camera đang được stream trên UI:
+Trang chi tiết camera luôn mở được từ card camera:
 
 - Load thông tin camera (`GET /api/v1/cameras/{id}`), status worker, preview reservations của user và tối đa 50 alert mới nhất của camera.
-- Chỉ render stream lớn nếu reservation còn sống, worker `running`, `hasFrame=true` và không có `error`.
+- Chỉ render stream lớn nếu reservation của user hiện tại còn sống, worker `running`, `hasFrame=true` và không có `error`; nếu chưa có preview thì trang vẫn hiện thông tin camera, total alerts và danh sách alert.
 - Gửi keepalive định kỳ theo `keepaliveSec`; nếu reservation hết hạn thì stream bị tắt và hiện lỗi.
 - Bên dưới stream hiển thị name/hãng camera, location, total alerts.
 - Có dropdown và list nhỏ các alert của camera; bấm vào alert chuyển tới `/alerts/[id]`.
@@ -366,4 +371,4 @@ CSS Variables được định nghĩa trong `globals.css`:
 
 ---
 
-*Tài liệu phản ánh trạng thái frontend tại **Giai đoạn 9**. Frontend dùng cấu trúc feature-based (`src/app` route mỏng → `src/features/*/screens` → hooks/API/types theo feature), có login/register viewer-pending-activation (`@nhattienchung.vn`), `/admin/users` để Admin kích hoạt/chỉnh role, Dashboard tổng quan gọi backend `/api/admin/metrics` để nhận Prometheus/business metrics đã normalize, trang `/alerts` quản lý danh sách/xóa alert theo quyền và render snapshot qua backend image gateway, trang `/cameras` tích hợp Worker RTSP detect + preview reservation qua backend gateway, trang `/cameras/[id]` xem stream lớn khi reservation còn sống, trang `/logs` hiển thị AI Worker runtime monitoring snapshot dạng cards/table, và có Dockerfile để build bằng root `.env`/Compose; WebSocket real-time sẽ bổ sung sau nếu cần.*
+*Tài liệu phản ánh trạng thái frontend tại **Giai đoạn 9**. Frontend dùng cấu trúc feature-based (`src/app` route mỏng → `src/features/*/screens` → hooks/API/types theo feature), có login/register viewer-pending-activation (`@nhattienchung.vn`), `/admin/users` để Admin kích hoạt/chỉnh role, `/` redirect sang `/cameras`, Dashboard tổng quan gọi backend `/api/admin/metrics` để nhận Prometheus/business metrics đã normalize, trang `/alerts` quản lý danh sách/xóa alert theo quyền và render snapshot qua backend image gateway, trang `/cameras` tích hợp Worker RTSP detect + preview reservation qua backend gateway, Viewer chỉ thấy Alerts/Cameras ở sidebar nhưng vẫn xem được preview nếu reserve pass, trang `/cameras/[id]` xem stream lớn khi reservation còn sống, trang `/logs` hiển thị AI Worker runtime monitoring snapshot dạng cards/table, và có Dockerfile để build bằng root `.env`/Compose; WebSocket real-time sẽ bổ sung sau nếu cần.*

@@ -540,9 +540,9 @@ RegisterRequest(username,email,password)
 
 | Endpoint | Method | Auth | Mô tả |
 |---|---|---|---|
-| `/api/v1/cameras/{id}/preview/reserve` | POST | ADMIN theo `SecurityConfig` hiện tại | Kiểm tra CPU threshold và cấp quyền xem stream UI theo Redis TTL |
-| `/api/v1/cameras/{id}/preview/keepalive` | POST | ADMIN theo `SecurityConfig` hiện tại | Gia hạn reservation khi card/detail page vẫn đang xem stream |
-| `/api/v1/cameras/{id}/preview/release` | POST | ADMIN theo `SecurityConfig` hiện tại | Xóa reservation khi user ẩn preview |
+| `/api/v1/cameras/{id}/preview/reserve` | POST | ADMIN/VIEWER | Kiểm tra CPU threshold và cấp quyền xem stream UI theo Redis TTL |
+| `/api/v1/cameras/{id}/preview/keepalive` | POST | ADMIN/VIEWER | Gia hạn reservation khi card/detail page vẫn đang xem stream |
+| `/api/v1/cameras/{id}/preview/release` | POST | ADMIN/VIEWER | Xóa reservation khi user ẩn preview |
 | `/api/v1/cameras/preview/my` | GET | Mọi role | Liệt kê các preview reservation còn sống của user hiện tại |
 
 #### `DetectionCapacityController`
@@ -576,8 +576,8 @@ RegisterRequest(username,email,password)
 - `/api/v1/auth/**` gồm login/register, `/swagger-ui/**`, `/v3/api-docs/**`, `/swagger-ui.html`, `/actuator/health`, `/actuator/info`, `/actuator/prometheus` → **PUBLIC**
 - `GET /api/admin/metrics` → chỉ ADMIN
 - `GET /api/v1/cameras/**` → ADMIN hoặc VIEWER
-- `POST/PUT/DELETE /api/v1/cameras/**` → Chỉ ADMIN
-- Preview endpoints `POST /api/v1/cameras/{id}/preview/*` hiện match rule `POST /api/v1/cameras/**` nên chỉ ADMIN được reserve/keepalive/release preview trong cấu hình hiện tại
+- `POST /api/v1/cameras/{id}/preview/*` → ADMIN hoặc VIEWER
+- `POST/PUT/DELETE /api/v1/cameras/**` còn lại → Chỉ ADMIN
 - `/api/v1/detection/capacity` → cần token, mọi role đã đăng nhập
 - Tất cả còn lại → Cần token
 - Session: `STATELESS` (không dùng session — JWT là stateless)
@@ -694,7 +694,7 @@ RTSP source
   └─ latest JPEG → worker nội bộ → backend /api/v1/cameras/{id}/stream.mjpg → UI
 ```
 
-UI không tự mở stream ngay sau Start Detect. Sau khi detection chạy và có frame, card camera hiện nút **Mở stream**; frontend gọi preview reserve trước, nếu pass mới render MJPEG. Trang `/cameras/[id]` chỉ xem được khi reservation còn sống và worker status đang `running + hasFrame + không error`.
+UI không tự mở stream ngay sau Start Detect. Sau khi detection chạy và có frame, card camera hiện nút **Mở stream** cho mọi user đã đăng nhập; frontend gọi preview reserve trước, nếu pass mới render MJPEG. Trang `/cameras/[id]` luôn mở được từ card camera, nhưng phần stream lớn chỉ render khi reservation của user hiện tại còn sống và worker status đang `running + hasFrame + không error`.
 
 ---
 
