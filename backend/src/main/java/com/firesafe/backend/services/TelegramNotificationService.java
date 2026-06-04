@@ -4,19 +4,25 @@ import com.firesafe.backend.models.Alert;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.client.RestTemplateBuilder;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 
+import java.net.URI;
 import java.time.format.DateTimeFormatter;
 import java.util.Map;
+import java.util.Optional;
 
 @Slf4j
 @Service
 public class TelegramNotificationService {
 
-    private static final String API_URL = "https://api.telegram.org/bot{token}/sendMessage";
+    private static final String SEND_MESSAGE_API_URL = "https://api.telegram.org/bot{token}/sendMessage";
+    private static final String SEND_PHOTO_API_URL = "https://api.telegram.org/bot{token}/sendPhoto";
     private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("HH:mm:ss dd/MM/yyyy");
 
     @Value("${telegram.enabled:false}")
@@ -28,9 +34,11 @@ public class TelegramNotificationService {
     @Value("${telegram.chat-id:}")
     private String chatId;
 
+    private final MinioService minioService;
     private final RestTemplate restTemplate;
 
-    public TelegramNotificationService(RestTemplateBuilder builder) {
+    public TelegramNotificationService(MinioService minioService, RestTemplateBuilder builder) {
+        this.minioService = minioService;
         this.restTemplate = builder.build();
     }
 
@@ -49,10 +57,17 @@ public class TelegramNotificationService {
         }
 
         String message = buildMessage(alert);
-        return doSend(message);
+        if (alert.getImageUrl() != null && !alert.getImageUrl().isBlank()) {
+            boolean photoSent = doSendPhoto(alert.getImageUrl(), message);
+            if (photoSent) {
+                return true;
+            }
+            log.warn("Falling back to Telegram text notification for alert ID={}", alert.getId());
+        }
+        return doSendMessage(message);
     }
 
-    private boolean doSend(String message) {
+    private boolean doSendMessage(String message) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
 
@@ -66,26 +81,102 @@ public class TelegramNotificationService {
 
         try {
             ResponseEntity<String> response = restTemplate.exchange(
-                    API_URL, HttpMethod.POST, request, String.class,
+                    SEND_MESSAGE_API_URL, HttpMethod.POST, request, String.class,
                     Map.of("token", botToken)
             );
-            log.info("Telegram notification sent. Status: {}", response.getStatusCode());
+            log.info("Telegram text notification sent. Status: {}", response.getStatusCode());
             return true;
         } catch (HttpClientErrorException e) {
-            if (e.getStatusCode() == HttpStatus.TOO_MANY_REQUESTS) {
-                log.warn("Telegram rate limit hit (429). Will retry.");
-                throw new TelegramRateLimitException("Telegram rate limit exceeded", e);
-            }
-            if (e.getStatusCode() == HttpStatus.FORBIDDEN) {
-                log.error("Telegram bot blocked or quota exceeded (403). No retry.");
-                throw new TelegramQuotaException("Telegram bot forbidden", e);
-            }
-            log.error("Telegram API error: {} — {}", e.getStatusCode(), e.getMessage());
+            handleTelegramClientError(e);
             return false;
         } catch (Exception e) {
             log.error("Unexpected error sending Telegram notification: {}", e.getMessage());
             return false;
         }
+    }
+
+    private boolean doSendPhoto(String imageUrl, String caption) {
+        byte[] imageBytes = loadImageBytes(imageUrl);
+        if (imageBytes.length == 0) {
+            return false;
+        }
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+
+        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+        body.add("chat_id", chatId);
+        body.add("caption", caption);
+        body.add("parse_mode", "HTML");
+        body.add("photo", new ByteArrayResource(imageBytes) {
+            @Override
+            public String getFilename() {
+                return filenameFromUrl(imageUrl);
+            }
+        });
+
+        HttpEntity<MultiValueMap<String, Object>> request = new HttpEntity<>(body, headers);
+        try {
+            ResponseEntity<String> response = restTemplate.exchange(
+                    SEND_PHOTO_API_URL, HttpMethod.POST, request, String.class,
+                    Map.of("token", botToken)
+            );
+            log.info("Telegram photo notification sent. Status: {}", response.getStatusCode());
+            return true;
+        } catch (HttpClientErrorException e) {
+            handleTelegramClientError(e);
+            return false;
+        } catch (Exception e) {
+            log.error("Unexpected error sending Telegram photo notification: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    private byte[] loadImageBytes(String imageUrl) {
+        Optional<byte[]> minioBytes = minioService.readObjectBytesByUrl(imageUrl);
+        if (minioBytes.isPresent() && minioBytes.get().length > 0) {
+            return minioBytes.get();
+        }
+        return downloadImage(imageUrl);
+    }
+
+    private byte[] downloadImage(String imageUrl) {
+        try {
+            ResponseEntity<byte[]> response = restTemplate.getForEntity(imageUrl, byte[].class);
+            byte[] body = response.getBody();
+            return body == null ? new byte[0] : body;
+        } catch (Exception e) {
+            log.error("Failed to download alert snapshot for Telegram: {}", e.getMessage());
+            return new byte[0];
+        }
+    }
+
+    private String filenameFromUrl(String imageUrl) {
+        try {
+            String path = URI.create(imageUrl).getPath();
+            int slashIndex = path.lastIndexOf('/');
+            String filename = slashIndex >= 0 ? path.substring(slashIndex + 1) : path;
+            return filename.isBlank() ? "alert-snapshot.png" : filename;
+        } catch (Exception e) {
+            return "alert-snapshot.png";
+        }
+    }
+
+    private void handleTelegramClientError(HttpClientErrorException e) {
+        if (e.getStatusCode() == HttpStatus.TOO_MANY_REQUESTS) {
+            log.warn("Telegram rate limit hit (429). Will retry.");
+            throw new TelegramRateLimitException("Telegram rate limit exceeded", e);
+        }
+        if (e.getStatusCode() == HttpStatus.FORBIDDEN) {
+            log.error("Telegram bot blocked or quota exceeded (403). No retry.");
+            throw new TelegramQuotaException("Telegram bot forbidden", e);
+        }
+        log.error("Telegram API error: {} — {}", e.getStatusCode(), responseBody(e));
+    }
+
+    private String responseBody(HttpClientErrorException e) {
+        String body = e.getResponseBodyAsString();
+        return body == null || body.isBlank() ? "empty response body" : body;
     }
 
     private String buildMessage(Alert alert) {
@@ -94,12 +185,16 @@ public class TelegramNotificationService {
                 🔥 <b>CẢNH BÁO CHÁY/KHÓI</b>
                 
                 📷 <b>Camera:</b> %s
+                📍 <b>Vị trí:</b> %s
                 🏷️ <b>Loại:</b> %s
                 📊 <b>Độ tin cậy:</b> %.0f%%
                 🕐 <b>Thời gian:</b> %s
                 🆔 <b>Alert ID:</b> #%d
                 """,
                 alert.getCamera().getName(),
+                alert.getCamera().getLocation() == null || alert.getCamera().getLocation().isBlank()
+                        ? "Không xác định"
+                        : alert.getCamera().getLocation(),
                 alert.getLabel().toUpperCase(),
                 alert.getConfidence().doubleValue() * 100,
                 alert.getDetectedAt().format(FORMATTER),

@@ -13,9 +13,9 @@ video-detect/
 ├── run-video-detect.ps1     ← Runner Windows scoped trong video-detect/, tự tạo venv, cài deps và forward args
 ├── run-video-detect.sh      ← Runner Linux scoped trong video-detect/, tự tạo venv, cài deps và forward args
 ├── src/
-│   ├── config.py            ← Parse CLI args + chọn model mặc định/fallback
+│   ├── config.py            ← Parse CLI args + chọn model mặc định best.pt
 │   └── detector.py          ← Wrapper Ultralytics YOLO
-├── models/                  ← Đặt wildfire-smoke-fire.pt hoặc best.pt tại đây
+├── models/                  ← Đặt best.pt tại đây hoặc truyền model khác bằng --model
 └── runs/                    ← Output annotated video/image khi dùng --save
 ```
 
@@ -33,6 +33,8 @@ Khác với `ai-worker/`:
 | `ai-worker/` | Service HTTP đọc RTSP, stream MJPEG preview, upload MinIO, POST alert backend |
 
 `video-detect/` không phụ thuộc runtime chính và không nằm trong `docker-compose.yml`. Có thể chạy riêng nếu có Python, dependencies và model `.pt`; Docker Compose chỉ chạy AI Worker realtime trong `ai-worker/`.
+
+Lưu ý model: AI Worker Docker và CLI `video-detect/` hiện cùng mặc định dùng `best.pt`. Nếu muốn thử model khác, truyền rõ `--model path/to/model.pt`.
 
 ---
 
@@ -134,27 +136,28 @@ run-video-detect.ps1, run-video-detect.sh hoặc manual Python venv
 | Cờ | Bắt buộc | Mặc định | Mô tả |
 |---|---:|---|---|
 | `--source` | Có | — | Path tới video/image local |
-| `--model` | Không | `models/wildfire-smoke-fire.pt`, fallback `models/best.pt` | Path tới YOLO `.pt` |
+| `--model` | Không | `models/best.pt` | Path tới YOLO `.pt` |
 | `--conf` | Không | `0.25` | Confidence threshold |
 | `--show` | Không | `false` | Mở cửa sổ preview detect |
 | `--save` | Không | `false` | Lưu output dưới `video-detect/runs/detect/` |
 
-Nếu truyền `--model`, CLI dùng đúng path đó và không fallback.
+Nếu truyền `--model`, CLI dùng đúng path đó.
 
 ---
 
 ## 📦 Model mặc định
 
-Khi không truyền `--model`, `src/config.py` chọn theo thứ tự:
+Khi không truyền `--model`, `src/config.py` luôn dùng:
 
-1. `video-detect/models/wildfire-smoke-fire.pt`
-2. `video-detect/models/best.pt`
+```text
+video-detect/models/best.pt
+```
 
-Nếu cả hai không tồn tại, `src/detector.py` fail rõ ràng:
+Nếu file này không tồn tại, `src/detector.py` fail rõ ràng:
 
 ```text
 Model not found: ...
-Place wildfire-smoke-fire.pt or best.pt under video-detect/models/, or pass --model.
+Place best.pt under video-detect/models/, or pass --model.
 ```
 
 ---
@@ -185,11 +188,13 @@ video-detect/runs/detect/
 | `requirements.txt` | Có | Khai báo dependencies |
 | `run-video-detect.ps1` | Có | Runner Windows tự tạo venv/cài deps/forward args |
 | `run-video-detect.sh` | Có | Runner Linux tự tạo venv/cài deps/forward args |
-| `src/config.py` | Có | Parse args + model fallback |
+| `src/config.py` | Có | Parse args + model mặc định `best.pt` |
 | `src/detector.py` | Có | Load YOLO + predict source file |
 | `models/*.pt` | Local | Model nặng, tải riêng, đã ignore |
 | `venv/` | Không commit | Tự tạo lại bằng runner |
 | `runs/` | Không commit | Output generated khi dùng `--save` |
+
+`video-detect/` không dùng root `.env`, không đọc RTSP từ camera thật, không dùng Redis/RabbitMQ/MinIO và không chịu tác động của `docker-compose.yml`.
 
 ---
 

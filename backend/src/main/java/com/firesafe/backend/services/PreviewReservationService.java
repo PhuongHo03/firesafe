@@ -37,9 +37,6 @@ public class PreviewReservationService {
     @Value("${preview.keepalive-seconds:30}")
     private long keepaliveSeconds;
 
-    @Value("${preview.max-global:4}")
-    private long maxGlobal;
-
     public PreviewReservationResponse reserve(String username, Long cameraId) {
         ensureCameraExists(cameraId);
         String key = reservationKey(username, cameraId);
@@ -49,14 +46,9 @@ public class PreviewReservationService {
             return success(cameraId);
         }
 
-        long activeCount = activeReservationCount();
-        if (activeCount >= maxGlobal) {
-            return denied(cameraId, "Đã đạt giới hạn preview đang mở");
-        }
-
-        double cpuPct = currentCpuPct();
+        double cpuPct = monitoringService.getCurrentCpuPct();
         if (cpuPct >= cpuThreshold) {
-            return denied(cameraId, "Hệ thống gần quá tải (CPU " + Math.round(cpuPct) + "%). Tạm thời không mở thêm preview.");
+            return denied(cameraId, "CPU " + Math.round(cpuPct) + "% quá cao để stream preview");
         }
 
         redisTemplate.opsForValue().set(key, Instant.now().toString(), Duration.ofSeconds(ttlSeconds));
@@ -94,20 +86,6 @@ public class PreviewReservationService {
         if (!cameraRepository.existsById(cameraId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Camera not found: " + cameraId);
         }
-    }
-
-    private double currentCpuPct() {
-        try {
-            AdminMetricsResponse metrics = monitoringService.getAdminMetrics();
-            return metrics.getSystem().getCpuPct();
-        } catch (Exception ex) {
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Không thể kiểm tra tải hệ thống");
-        }
-    }
-
-    private long activeReservationCount() {
-        Set<String> keys = redisTemplate.keys(KEY_PREFIX + "*");
-        return keys == null ? 0 : keys.size();
     }
 
     private PreviewReservationResponse success(Long cameraId) {

@@ -2,12 +2,19 @@ import { request } from "@/shared/utils/http";
 import { Alert } from "@/features/alerts/types/alert";
 
 export const alertsApi = {
-  getAlerts(page = 0, size = 20, token: string) {
+  getAlerts(page = 0, size = 20, token: string, cameraId?: number) {
+    const params = new URLSearchParams({
+      page: String(page),
+      size: String(size),
+    });
+    if (cameraId !== undefined) {
+      params.set("cameraId", String(cameraId));
+    }
     return request<{
       content: Alert[];
       totalElements: number;
       totalPages: number;
-    }>(`/api/v1/alerts?page=${page}&size=${size}`, {
+    }>(`/api/v1/alerts?${params.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
   },

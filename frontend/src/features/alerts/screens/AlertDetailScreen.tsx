@@ -64,15 +64,6 @@ export default function AlertDetailScreen() {
             </div>
 
             <AlertDetailCard alert={alert} />
-
-            {alert.imageUrl && (
-              <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.75rem", padding: "1rem 1.25rem" }}>
-                <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.4rem" }}>URL ảnh</div>
-                <a href={alert.imageUrl} target="_blank" rel="noreferrer" style={{ color: "var(--accent)", fontSize: "0.85rem", wordBreak: "break-all" }}>
-                  {alert.imageUrl}
-                </a>
-              </div>
-            )}
           </div>
         )}
       </main>

@@ -51,6 +51,7 @@ class CameraWorkerConfig:
     rtsp_buffer_size: int
     overlay_ttl_seconds: float
     sustained_detection_seconds: float
+    alert_labels: frozenset[str]
 
 
 @dataclass(frozen=True)
@@ -73,10 +74,13 @@ class SharedRtspSource:
         self._running = False
         self._error: Optional[str] = None
         self._last_logged_status: tuple[bool, Optional[str]] | None = None
+        self._first_attempt_done = threading.Event()
 
     def start(self):
         if self._reader_thread and self._reader_thread.is_alive():
             return
+        self._stop_event.clear()
+        self._first_attempt_done.clear()
         self._reader_thread = threading.Thread(target=self._read_loop, daemon=True)
         self._reader_thread.start()
 
@@ -88,6 +92,18 @@ class SharedRtspSource:
     def status(self) -> tuple[bool, Optional[str], bool]:
         with self._lock:
             return self._running, self._error, self._latest_jpeg is not None
+
+    def wait_for_ready_or_first_failure(self, timeout_seconds: float) -> tuple[bool, Optional[str], bool]:
+        deadline = time.monotonic() + timeout_seconds
+        while time.monotonic() < deadline:
+            running, error, has_frame = self.status()
+            if running and has_frame:
+                return running, error, has_frame
+            if self._first_attempt_done.is_set() and error:
+                return running, error, has_frame
+            if self._stop_event.wait(0.1):
+                break
+        return self.status()
 
     def latest_jpeg(self) -> Optional[bytes]:
         with self._lock:
@@ -184,6 +200,7 @@ class SharedRtspSource:
             if not self._stop_event.is_set():
                 if not opened:
                     self._set_status(False, f"Cannot open RTSP stream; retrying in {reconnect_delay:.0f}s")
+                    self._first_attempt_done.set()
                 self._stop_event.wait(reconnect_delay)
                 reconnect_delay = min(reconnect_delay * 2, max_reconnect_delay)
 
@@ -311,10 +328,13 @@ class CameraWorker:
         for index in range(len(result.boxes)):
             class_id = int(result.boxes.cls[index].item())
             confidence = float(result.boxes.conf[index].item())
-            label = result.names.get(class_id, str(class_id))
+            label = str(result.names.get(class_id, str(class_id))).strip().lower()
             xyxy = tuple(float(value) for value in result.boxes.xyxy[index].tolist())
             detections.append(Detection(label=label, confidence=confidence, xyxy=xyxy))
         return detections
+
+    def _alert_detections(self, detections: list[Detection]) -> list[Detection]:
+        return [detection for detection in detections if detection.label in self.config.alert_labels]
 
     def handle_inference_result(self, result: InferenceResult):
         if not self._running or result.frame_seq <= self._last_processed_frame_seq:
@@ -333,7 +353,8 @@ class CameraWorker:
             self._inference_ms_total += result.inference_ms
             self._detections_total += len(detections)
         self._set_detections(detections, now)
-        if not detections:
+        alert_detections = self._alert_detections(detections)
+        if not alert_detections:
             self._sustained_detection_started_at = None
             return
 
@@ -347,13 +368,13 @@ class CameraWorker:
         if not self._backend or not self._storage:
             return
 
-        detection = max(detections, key=lambda item: item.confidence)
+        detection = max(alert_detections, key=lambda item: item.confidence)
         reservation = self._backend.reserve_alert(self.config.camera_id, detection.label)
         self._last_alert_sent_at = now
         if not reservation.get("reserved"):
             return
 
-        annotated_frame = self._draw_detections(result.frame, detections)
+        annotated_frame = self._draw_detections(result.frame, alert_detections)
         image_url = self._storage.upload(self.config.camera_id, detection.label, encode_png(annotated_frame))
         self._backend.create_alert(self.config.camera_id, detection.label, detection.confidence, image_url, reservation["reservationToken"])
         with self._lock:

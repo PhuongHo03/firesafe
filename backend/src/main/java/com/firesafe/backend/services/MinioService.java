@@ -12,6 +12,7 @@ import java.io.InputStream;
 import java.net.URI;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
@@ -107,16 +108,32 @@ public class MinioService {
 
     public void deleteObjectByUrl(String imageUrl) {
         try {
-            String prefix = "/" + bucket + "/";
-            String path = URI.create(imageUrl).getPath();
-            if (path == null || !path.startsWith(prefix) || path.length() == prefix.length()) {
+            Optional<String> objectName = objectNameFromUrl(imageUrl);
+            if (objectName.isEmpty()) {
                 log.warn("Skip MinIO delete for non-bucket URL: {}", imageUrl);
                 return;
             }
-            String objectName = URLDecoder.decode(path.substring(prefix.length()), StandardCharsets.UTF_8);
-            deleteObject(objectName);
+            deleteObject(objectName.get());
         } catch (Exception e) {
             log.warn("Failed to delete MinIO object from URL: {}", imageUrl, e);
+        }
+    }
+
+    public Optional<byte[]> readObjectBytesByUrl(String imageUrl) {
+        try {
+            Optional<String> objectName = objectNameFromUrl(imageUrl);
+            if (objectName.isEmpty()) {
+                return Optional.empty();
+            }
+            try (InputStream inputStream = minioClient.getObject(GetObjectArgs.builder()
+                    .bucket(bucket)
+                    .object(objectName.get())
+                    .build())) {
+                return Optional.of(inputStream.readAllBytes());
+            }
+        } catch (Exception e) {
+            log.warn("Failed to read MinIO object from URL: {}", imageUrl, e);
+            return Optional.empty();
         }
     }
 
@@ -130,5 +147,18 @@ public class MinioService {
         } catch (Exception e) {
             log.warn("Failed to delete MinIO object: {}", objectName, e);
         }
+    }
+
+    private Optional<String> objectNameFromUrl(String imageUrl) {
+        if (imageUrl == null || imageUrl.isBlank()) {
+            return Optional.empty();
+        }
+
+        String prefix = "/" + bucket + "/";
+        String path = URI.create(imageUrl).getPath();
+        if (path == null || !path.startsWith(prefix) || path.length() == prefix.length()) {
+            return Optional.empty();
+        }
+        return Optional.of(URLDecoder.decode(path.substring(prefix.length()), StandardCharsets.UTF_8));
     }
 }

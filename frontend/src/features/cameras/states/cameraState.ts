@@ -2,6 +2,7 @@ import { CameraDetectionStatus, CameraFormState } from "@/features/cameras/types
 
 export const CAMERA_MIN_REFRESH_MS = 250;
 export const CAMERA_STATUS_REFRESH_MS = 10_000;
+export const CAMERA_STOP_MIN_BUSY_MS = 600;
 
 export const INITIAL_CAMERA_FORM: CameraFormState = {
   name: "",

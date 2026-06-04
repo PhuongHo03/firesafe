@@ -30,6 +30,8 @@ backend/
     │   │   │   ├── AlertController.java             ← GET/POST/DELETE /api/v1/alerts
     │   │   │   ├── AdminMetricsController.java      ← GET /api/admin/metrics (ADMIN only)
     │   │   │   ├── CameraController.java            ← CRUD /api/v1/cameras
+    │   │   │   ├── CameraPreviewController.java    ← POST /api/v1/cameras/{id}/preview/reserve|keepalive|release, GET /preview/my
+    │   │   │   ├── DetectionCapacityController.java← GET /api/v1/detection/capacity
     │   │   │   ├── MetricsExportController.java     ← GET /api/v1/metrics/export
     │   │   │   ├── MonitoringController.java        ← GET /api/v1/monitoring/summary
     │   │   │   └── UserController.java              ← ADMIN quản lý users
@@ -41,7 +43,9 @@ backend/
     │   │   │   ├── AlertReservationRequest.java / AlertReservationResponse.java
     │   │   │   ├── CameraRequest.java / CameraResponse.java
     │   │   │   ├── AdminMetricsResponse.java
-    │   │   │   └── MetricsExportResponse.java / MonitoringSummaryResponse.java
+    │   │   │   ├── MetricsExportResponse.java / MonitoringSummaryResponse.java
+    │   │   │   ├── PreviewReservationResponse.java
+    │   │   │   └── PreviewReservationsResponse.java
     │   │   │
     │   │   ├── models/                              ← ORM Model — ánh xạ Java class ↔ bảng DB
     │   │   │   ├── User.java                        ← Bảng users
@@ -59,8 +63,10 @@ backend/
     │   │   │   ├── AlertService.java                ← Lưu alert + Redis debounce + RabbitMQ publish
     │   │   │   ├── AuthService.java                 ← Login/register + JWT
     │   │   │   ├── CameraService.java               ← CRUD logic cho cameras
+    │   │   │   ├── DetectionCapacityService.java    ← CPU/GPU threshold gate cho detection (dynamic)
     │   │   │   ├── MetricsExportService.java        ← Tổng hợp metrics nhẹ cho Prometheus/dashboard
-    │   │   │   ├── MonitoringService.java           ← Summary cũ + query Prometheus internal + Redis cache admin metrics
+    │   │   │   ├── MonitoringService.java           ← Summary + query Prometheus (CPU/GPU) + Redis cache
+    │   │   │   ├── PreviewReservationService.java   ← Redis preview reservation + CPU capacity check
     │   │   │   ├── UserService.java                 ← ADMIN quản lý user/role
     │   │   │   ├── UserDetailsServiceImpl.java      ← Load user từ DB cho Spring Security
     │   │   │   ├── MinioService.java                ← Upload ảnh, tạo pre-signed URL
@@ -118,12 +124,12 @@ docker compose up --build -d
 Trong Docker Compose, backend chạy nội bộ tại `backend:8080` và **không publish trực tiếp ra host**. Browser/API client đi qua Nginx app entrypoint:
 
 ```text
-http://localhost:<FRONTEND_PORT>/api/v1/...
-http://localhost:<FRONTEND_PORT>/swagger-ui.html
-http://localhost:<FRONTEND_PORT>/actuator/health
+http://localhost:<NGINX_PORT>/api/v1/...
+http://localhost:<NGINX_PORT>/swagger-ui.html
+http://localhost:<NGINX_PORT>/actuator/health
 ```
 
-Mặc định `FRONTEND_PORT=3000`, nên Swagger qua Docker là:
+Mặc định `NGINX_PORT=3000`, nên Swagger qua Docker là:
 
 ```text
 http://localhost:3000/swagger-ui.html
@@ -260,7 +266,10 @@ spring.datasource.url: jdbc:mariadb://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_
 | `jwt.*` | Secret key và thời gian hết hạn token (24h) |
 | `minio.*` | Endpoint, access key, bucket name |
 | `alert.debounce-ttl-seconds` | Thời gian debounce alert (300s = 5 phút) |
-| `management.endpoints` | Expose `/actuator/prometheus` cho Grafana |
+| `preview.*` | CPU threshold, TTL và keepalive cho quyền xem MJPEG preview trên UI |
+| `detection.*` | CPU/GPU threshold trước khi bật thêm detection |
+| `firesafe.prometheus.base-url` | URL Prometheus nội bộ để backend query metrics cho Dashboard |
+| `management.endpoints` | Expose `/actuator/prometheus` cho Prometheus scrape |
 | `springdoc.*` | Đường dẫn Swagger UI |
 | `firesafe.preset-camera` | Camera RTSP preset đọc từ `FIRESAFE_PRESET_CAMERA_*` |
 | `telegram.*` / `notification.retry.*` | Bật/tắt Telegram và cấu hình retry notification |
@@ -386,17 +395,21 @@ CRUD đơn giản. Mỗi method có `@Transactional` đảm bảo atomicity khi 
 - `upload(objectName, inputStream, contentType, size)` → upload file + trả về pre-signed URL (7 ngày)
 - `uploadMultipart(objectName, file)` → wrapper dùng cho REST endpoint upload trực tiếp
 - `getPresignedUrl(objectName, hours)` → tạo URL có thời hạn cho object đã tồn tại
+- `deleteObjectByUrl(imageUrl)` → trích object key từ URL và xóa object khi admin xóa alert
+- `readObjectBytesByUrl(imageUrl)` → trích object key từ URL và đọc bytes bằng MinIO SDK nội bộ; dùng để Telegram gửi ảnh mà không phụ thuộc browser/Nginx hay URL public
 
 #### `TelegramNotificationService.java` — Telegram Bot API
 - Có thể bật/tắt qua biến môi trường `TELEGRAM_ENABLED=true/false` (mặc định `false`)
 - Khi `enabled=false` → chỉ log, không gọi API thật (an toàn cho dev)
-- Gửi tin nhắn HTML có format rõ ràng: Camera, Label, Confidence%, Thời gian, Alert ID
+- Ưu tiên gửi ảnh alert qua Telegram `sendPhoto` kèm caption HTML: Camera, Label, Confidence%, Thời gian, Alert ID
+- Ảnh được load bằng `MinioService.readObjectBytesByUrl(imageUrl)` trước; nếu không đọc được từ MinIO thì fallback download `imageUrl`
+- Nếu alert không có ảnh hoặc gửi ảnh lỗi không phải rate-limit/quota thì fallback gửi text message
 - Ném `TelegramRateLimitException` khi HTTP 429 → Worker retry với backoff
 - Ném `TelegramQuotaException` khi HTTP 403 → Worker KHÔNG retry, alert admin
 
 #### `NotificationWorker.java` — RabbitMQ Consumer với Retry
 ```
-Queue "alert.notification.queue"
+Queue "alert.notification.queue" hoặc nhiều queue shard nếu `RABBITMQ_NOTIFICATION_QUEUE_COUNT > 1`
     → processNotification(alertId)
     → Load Alert từ DB
     → sendWithRetry(alert)
@@ -408,6 +421,7 @@ Queue "alert.notification.queue"
 ```
 Chạy **bất đồng bộ** — `AlertService` không cần chờ notification xong mới trả response.
 Retry config đọc từ `application.yml`: `notification.retry.*`
+`RABBITMQ_NOTIFICATION_QUEUE_COUNT` mặc định `1`. Khi tăng lên `N`, backend tạo `N` queue shard và route mỗi alert vào đúng một queue theo `alertId`, nên không gửi trùng Telegram.
 
 #### `MonitoringService.java` — Admin Metrics Dashboard
 Backend query internal Prometheus, map normalized metrics và cache Redis snapshot:
@@ -494,15 +508,12 @@ RegisterRequest(username,email,password)
 
 | Endpoint | Method | Mô tả |
 |---|---|---|
+| `/api/v1/alerts/reservations` | POST | AI Worker reserve Redis debounce slot trước khi upload snapshot |
 | `/api/v1/alerts` | POST | AI Worker gửi alert mới |
 | `/api/v1/alerts?cameraId=1&page=0` | GET | Danh sách alerts (filter + phân trang) |
 | `/api/v1/alerts/{id}` | GET | Chi tiết một alert |
 | `/api/v1/alerts` | DELETE | Xóa tất cả alert (ADMIN), cleanup MinIO snapshot và Redis debounce |
 | `/api/v1/alerts/{id}` | DELETE | Xóa một alert (ADMIN), cleanup MinIO snapshot và Redis debounce nếu key còn trỏ tới alert đó |
-| `/api/v1/monitoring/summary` | GET | Monitoring summary cũ cho Dashboard: backend status, alert totals/24h/high-confidence, camera total/active |
-| `/api/v1/metrics/export` | GET | Export business metrics nhẹ cho dashboard/Prometheus migration: alert totals, hourly/byLabel, camera total/active |
-| `/api/v1/users` | GET | ADMIN list users để kích hoạt/chỉnh role |
-| `/api/v1/users/{id}` | PUT | ADMIN update `active` và role (`ROLE_ADMIN` hoặc `ROLE_VIEWER`) |
 
 #### `CameraController`
 
@@ -514,6 +525,36 @@ RegisterRequest(username,email,password)
 | `/api/v1/cameras/{id}` | PUT | ADMIN | Cập nhật camera |
 | `/api/v1/cameras/{id}` | DELETE | ADMIN | Xóa camera |
 
+#### `CameraPreviewController`
+
+| Endpoint | Method | Auth | Mô tả |
+|---|---|---|---|
+| `/api/v1/cameras/{id}/preview/reserve` | POST | ADMIN theo `SecurityConfig` hiện tại | Kiểm tra CPU threshold và cấp quyền xem stream UI theo Redis TTL |
+| `/api/v1/cameras/{id}/preview/keepalive` | POST | ADMIN theo `SecurityConfig` hiện tại | Gia hạn reservation khi card/detail page vẫn đang xem stream |
+| `/api/v1/cameras/{id}/preview/release` | POST | ADMIN theo `SecurityConfig` hiện tại | Xóa reservation khi user ẩn preview |
+| `/api/v1/cameras/preview/my` | GET | Mọi role | Liệt kê các preview reservation còn sống của user hiện tại |
+
+#### `DetectionCapacityController`
+
+| Endpoint | Method | Auth | Mô tả |
+|---|---|---|---|
+| `/api/v1/detection/capacity` | GET | Mọi role đã đăng nhập | Trả `{allowed, reason}` dựa trên CPU/GPU threshold trước khi frontend gọi AI Worker `/api/cameras/start` |
+
+#### `AdminMetricsController`, `MonitoringController`, `MetricsExportController`
+
+| Endpoint | Method | Auth | Mô tả |
+|---|---|---|---|
+| `/api/admin/metrics` | GET | ADMIN | Dashboard metrics đã normalize; backend query Prometheus nội bộ và cache Redis |
+| `/api/v1/monitoring/summary` | GET | Token | Monitoring summary legacy: backend status, alert totals/24h/high-confidence, camera total/active |
+| `/api/v1/metrics/export` | GET | Public | Export business metrics nhẹ cho Prometheus/dashboard migration |
+
+#### `UserController`
+
+| Endpoint | Method | Auth | Mô tả |
+|---|---|---|---|
+| `/api/v1/users` | GET | ADMIN | List users để kích hoạt/chỉnh role |
+| `/api/v1/users/{id}` | PUT | ADMIN | Update `active` và role (`ROLE_ADMIN` hoặc `ROLE_VIEWER`) |
+
 ---
 
 ### ⚙️ `configs/` — Spring Configuration
@@ -521,8 +562,11 @@ RegisterRequest(username,email,password)
 #### `SecurityConfig.java`
 Định nghĩa rules bảo mật:
 - `/api/v1/auth/**` gồm login/register, `/swagger-ui/**`, `/v3/api-docs/**`, `/swagger-ui.html`, `/actuator/health`, `/actuator/info`, `/actuator/prometheus` → **PUBLIC**
+- `GET /api/admin/metrics` → chỉ ADMIN
 - `GET /api/v1/cameras/**` → ADMIN hoặc VIEWER
 - `POST/PUT/DELETE /api/v1/cameras/**` → Chỉ ADMIN
+- Preview endpoints `POST /api/v1/cameras/{id}/preview/*` hiện match rule `POST /api/v1/cameras/**` nên chỉ ADMIN được reserve/keepalive/release preview trong cấu hình hiện tại
+- `/api/v1/detection/capacity` → cần token, mọi role đã đăng nhập
 - Tất cả còn lại → Cần token
 - Session: `STATELESS` (không dùng session — JWT là stateless)
 - CSRF: disabled (không cần với REST API + JWT)
@@ -532,7 +576,9 @@ RegisterRequest(username,email,password)
 Khai báo topology RabbitMQ:
 ```
 DirectExchange "alert.exchange"
-    └── Queue "alert.notification.queue"  (binding key: "alert.notification")
+    └── Queue "alert.notification.queue"      (binding key: "alert.notification")
+    └── Queue "alert.notification.queue.2"    (binding key: "alert.notification.2", nếu queue count >= 2)
+    └── Queue "alert.notification.queue.N"    (binding key: "alert.notification.N", nếu queue count >= N)
 ```
 Cấu hình JSON message converter để serialize/deserialize message tự động.
 
@@ -595,6 +641,49 @@ Bắt exception từ bất kỳ đâu → chuyển thành HTTP response chuẩn 
   └── utils/       → JWT helper + error handling toàn cục
 ```
 
+## 📊 Capacity management (Preview + Detection)
+
+Capacity check dùng CPU/GPU dynamic thresholds, không dùng hardcoded max.
+
+### Detection gate (`DETECTION_*`)
+
+Khi user bấm **Start Detect**:
+
+1. Frontend gọi `GET /api/v1/detection/capacity`
+2. Backend check `CPU < DETECTION_CPU_THRESHOLD`
+3. Nếu có GPU: check `GPU < DETECTION_GPU_THRESHOLD`
+4. Pass → start worker. Fail → frontend hiện lỗi, không start.
+
+### Preview gate (`PREVIEW_*`)
+
+Khi detection đã OK (có frame), frontend gọi:
+
+1. `POST /api/v1/cameras/{id}/preview/reserve`
+2. Backend check `CPU < PREVIEW_CPU_THRESHOLD`
+3. Pass → Redis reserve + TTL → show stream. Fail → detection vẫn chạy, UI không stream.
+
+Thresholds mặc định:
+
+```yaml
+preview.cpu-threshold: 80       # CPU ≥ 80% → chặn preview
+detection.cpu-threshold: 70     # CPU ≥ 70% → chặn detection mới
+detection.gpu-threshold: 80     # GPU ≥ 80% → chặn detection mới
+```
+
+Không có _MAX_GLOBAL. Capacity linh động dựa trên metrics thực tế.
+
+### Luồng stream UI gắn với detection
+
+Mỗi camera có duy nhất 1 `SharedRtspSource`. Stream UI và inference scheduler cùng đọc từ source đó.
+
+```text
+RTSP source
+  ├─ latest frame → scheduler → YOLO detect
+  └─ latest JPEG → /api/cameras/{id}/stream.mjpg → UI
+```
+
+UI không tự mở stream ngay sau Start Detect. Sau khi detection chạy và có frame, card camera hiện nút **Mở stream**; frontend gọi preview reserve trước, nếu pass mới render MJPEG. Trang `/cameras/[id]` chỉ xem được khi reservation còn sống và worker status đang `running + hasFrame + không error`.
+
 ---
 
-*Tài liệu phản ánh trạng thái backend tại **Giai đoạn 9**. Backend dùng cấu trúc strict layered packages (`controllers/`, `dtos/`, `services/`, `repositories/`, `models/`, `middlewares/`, `configs/`, `utils/`) và đã hỗ trợ login/register viewer-pending-activation với email `@nhattienchung.vn`, RBAC `ADMIN/VIEWER`, admin user activation/role editing, preset RTSP camera từ env, alert ingestion từ Worker, Redis debounce, RabbitMQ notification, MinIO snapshot URLs, metrics export nhẹ cho dashboard/Prometheus migration và Dockerfile cho Compose full stack.*
+*Tài liệu phản ánh trạng thái backend tại **Giai đoạn 9**. Backend dùng cấu trúc strict layered packages (`controllers/`, `dtos/`, `services/`, `repositories/`, `models/`, `middlewares/`, `configs/`, `utils/`) và đã hỗ trợ login/register viewer-pending-activation với email `@nhattienchung.vn`, RBAC `ADMIN/VIEWER`, admin user activation/role editing, preset RTSP camera từ env, alert ingestion từ AI Worker bằng Redis reservation/debounce, cleanup MinIO khi xóa alert, RabbitMQ notification, Telegram photo notification qua MinIO SDK, preview/detection capacity gates, admin dashboard metrics qua Prometheus nội bộ + Redis cache và Dockerfile cho Compose full stack.*

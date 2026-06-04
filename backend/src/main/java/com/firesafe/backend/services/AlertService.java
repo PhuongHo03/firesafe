@@ -58,6 +58,9 @@ public class AlertService {
     @Value("${rabbitmq.routing-key.notification:alert.notification}")
     private String notificationRoutingKey;
 
+    @Value("${rabbitmq.notification-queue-count:1}")
+    private int notificationQueueCount;
+
     public AlertReservationResponse reserveAlert(AlertReservationRequest request) {
         Camera camera = cameraRepository.findById(request.getCameraId())
                 .orElseThrow(() -> new IllegalArgumentException("Camera not found: " + request.getCameraId()));
@@ -108,7 +111,7 @@ public class AlertService {
             @Override
             public void afterCommit() {
                 log.info("New alert from camera {}, sending notification. Alert ID: {}", camera.getId(), saved.getId());
-                rabbitTemplate.convertAndSend(exchange, notificationRoutingKey, saved.getId());
+                rabbitTemplate.convertAndSend(exchange, notificationRoutingKey(saved.getId()), saved.getId());
             }
         });
 
@@ -179,5 +182,11 @@ public class AlertService {
 
     private String alertValue(Long alertId) {
         return "alert:" + alertId;
+    }
+
+    private String notificationRoutingKey(Long alertId) {
+        int count = Math.max(1, notificationQueueCount);
+        int queueIndex = Math.floorMod(alertId, count);
+        return queueIndex == 0 ? notificationRoutingKey : notificationRoutingKey + "." + (queueIndex + 1);
     }
 }

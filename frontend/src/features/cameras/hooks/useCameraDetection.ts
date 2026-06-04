@@ -3,13 +3,16 @@
 import { useEffect, useRef, useState } from "react";
 import { camerasApi } from "@/features/cameras/api/camerasApi";
 import { buildWorkerUnavailableStatus } from "@/features/cameras/dtos/cameraDto";
-import { CAMERA_STATUS_REFRESH_MS, hideCameraPreview, setCameraStatus, showCameraPreview } from "@/features/cameras/states/cameraState";
+import { CAMERA_STATUS_REFRESH_MS, CAMERA_STOP_MIN_BUSY_MS, hideCameraPreview, setCameraStatus, showCameraPreview, wait } from "@/features/cameras/states/cameraState";
 import { Camera, CameraDetectionStatus } from "@/features/cameras/types/camera";
 import { getToken } from "@/shared/utils/auth";
+
+export type BusyCameraAction = "starting" | "stopping" | null;
 
 export function useCameraDetection(cameras: Camera[], setError: (error: string) => void) {
   const [detectionStatus, setDetectionStatus] = useState<Record<number, CameraDetectionStatus>>({});
   const [busyCameraId, setBusyCameraId] = useState<number | null>(null);
+  const [busyCameraAction, setBusyCameraAction] = useState<BusyCameraAction>(null);
   const [previewCameraIds, setPreviewCameraIds] = useState<Set<number>>(() => new Set());
   const keepaliveSecondsRef = useRef(30);
 
@@ -25,6 +28,15 @@ export function useCameraDetection(cameras: Camera[], setError: (error: string) 
     );
     setDetectionStatus(Object.fromEntries(entries));
   }
+
+  useEffect(() => {
+    if (busyCameraId === null || busyCameraAction !== "starting") return;
+    const status = detectionStatus[busyCameraId];
+    if (status?.error || status?.hasFrame) {
+      setBusyCameraId(null);
+      setBusyCameraAction(null);
+    }
+  }, [busyCameraAction, busyCameraId, detectionStatus]);
 
   useEffect(() => {
     if (cameras.length === 0) {
@@ -138,30 +150,55 @@ export function useCameraDetection(cameras: Camera[], setError: (error: string) 
     if (!camera) return;
 
     setBusyCameraId(cameraId);
+    setBusyCameraAction("starting");
     try {
+      const token = getToken();
+      if (!token) {
+        setError("Vui lòng đăng nhập để start detect");
+        setBusyCameraId(null);
+        setBusyCameraAction(null);
+        return;
+      }
+      // check detection capacity first
+      try {
+        await camerasApi.checkDetectionCapacity(token);
+      } catch (capErr: unknown) {
+        const msg = capErr instanceof Error ? capErr.message : "Hệ thống hiện không cho phép bật detection";
+        setError(msg);
+        setBusyCameraId(null);
+        setBusyCameraAction(null);
+        return;
+      }
+
       const status = await camerasApi.startCameraDetection(camera);
       setDetectionStatus(prev => setCameraStatus(prev, cameraId, status));
       setError("");
+      // busyCameraId auto-cleared by status watcher effect when error or hasFrame
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Không thể start AI Worker");
-    } finally {
       setBusyCameraId(null);
+      setBusyCameraAction(null);
     }
   }
 
   async function stopDetection(cameraId: number) {
     setBusyCameraId(cameraId);
+    setBusyCameraAction("stopping");
+    const minimumBusy = wait(CAMERA_STOP_MIN_BUSY_MS);
     try {
       const status = await camerasApi.stopCameraDetection(cameraId);
+      await minimumBusy;
       setDetectionStatus(prev => setCameraStatus(prev, cameraId, status));
       hidePreview(cameraId);
       setError("");
     } catch (err: unknown) {
+      await minimumBusy;
       setError(err instanceof Error ? err.message : "Không thể stop AI Worker");
     } finally {
       setBusyCameraId(null);
+      setBusyCameraAction(null);
     }
   }
 
-  return { detectionStatus, busyCameraId, previewCameraIds, loadStatuses, showPreview, hidePreview, startDetection, stopDetection };
+  return { detectionStatus, busyCameraId, busyCameraAction, previewCameraIds, loadStatuses, showPreview, hidePreview, startDetection, stopDetection };
 }

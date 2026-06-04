@@ -27,7 +27,7 @@ public class NotificationWorker {
     private double multiplier;
 
     @Transactional(readOnly = true)
-    @RabbitListener(queues = "${rabbitmq.queue.notification:alert.notification.queue}")
+    @RabbitListener(queues = "#{@notificationQueueNames}")
     public void processNotification(Long alertId) {
         log.info("Received notification job for alert ID: {}", alertId);
 

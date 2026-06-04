@@ -8,6 +8,12 @@ export const camerasApi = {
     });
   },
 
+  getCamera(id: number, token: string) {
+    return request<Camera>(`/api/v1/cameras/${id}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  },
+
   createCamera(data: Omit<Camera, "id">, token: string) {
     return request<Camera>("/api/v1/cameras", {
       method: "POST",
@@ -19,6 +25,12 @@ export const camerasApi = {
   deleteCamera(id: number, token: string) {
     return request<void>(`/api/v1/cameras/${id}`, {
       method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  },
+
+  async checkDetectionCapacity(token: string) {
+    return request<{ allowed: boolean; reason?: string }>("/api/v1/detection/capacity", {
       headers: { Authorization: `Bearer ${token}` },
     });
   },

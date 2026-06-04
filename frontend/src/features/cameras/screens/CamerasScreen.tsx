@@ -15,7 +15,7 @@ import { Camera as CameraIcon, Plus, RefreshCw } from "lucide-react";
 export default function CamerasScreen() {
   const { cameras, loading, refreshing, error, setError, reload, addCamera, deleteCamera } = useCameras();
   const { showForm, setShowForm, form, saving, updateField, handleAdd } = useCameraForm(addCamera);
-  const { detectionStatus, busyCameraId, previewCameraIds, loadStatuses, showPreview, hidePreview, startDetection, stopDetection } = useCameraDetection(cameras, setError);
+  const { detectionStatus, busyCameraId, busyCameraAction, previewCameraIds, loadStatuses, showPreview, hidePreview, startDetection, stopDetection } = useCameraDetection(cameras, setError);
   const [admin, setAdmin] = useState(false);
 
   useEffect(() => {
@@ -56,6 +56,7 @@ export default function CamerasScreen() {
           admin={admin}
           detectionStatus={detectionStatus}
           busyCameraId={busyCameraId}
+          busyCameraAction={busyCameraAction}
           previewCameraIds={previewCameraIds}
           onShowPreview={showPreview}
           onHidePreview={hidePreview}

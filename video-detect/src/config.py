@@ -4,8 +4,7 @@ from pathlib import Path
 
 
 VIDEO_DETECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_MODEL_PATH = VIDEO_DETECT_ROOT / "models" / "wildfire-smoke-fire.pt"
-FALLBACK_MODEL_PATH = VIDEO_DETECT_ROOT / "models" / "best.pt"
+DEFAULT_MODEL_PATH = VIDEO_DETECT_ROOT / "models" / "best.pt"
 
 
 @dataclass(frozen=True)
@@ -27,8 +26,6 @@ def parse_args() -> Settings:
 
     args = parser.parse_args()
     model = Path(args.model) if args.model else DEFAULT_MODEL_PATH
-    if not args.model and not model.exists():
-        model = FALLBACK_MODEL_PATH
 
     return Settings(
         source=args.source,

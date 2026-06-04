@@ -1,6 +1,7 @@
-import { Loader2, Play, Square, Trash2, Wifi, WifiOff } from "lucide-react";
+import Link from "next/link";
+import { ExternalLink, Loader2, Play, Square, Trash2, Video, Wifi, WifiOff } from "lucide-react";
 import { camerasApi } from "@/features/cameras/api/camerasApi";
-import { hasWorkerStatus } from "@/features/cameras/dtos/cameraDto";
+import type { BusyCameraAction } from "@/features/cameras/hooks/useCameraDetection";
 import { Camera, CameraDetectionStatus } from "@/features/cameras/types/camera";
 
 interface CameraCardProps {
@@ -8,6 +9,7 @@ interface CameraCardProps {
   admin: boolean;
   status?: CameraDetectionStatus;
   busy: boolean;
+  busyAction: BusyCameraAction;
   previewing: boolean;
   onShowPreview: (cameraId: number) => void;
   onHidePreview: (cameraId: number) => void;
@@ -16,26 +18,61 @@ interface CameraCardProps {
   onDeleteCamera: (cameraId: number, name: string) => void;
 }
 
-export default function CameraCard({ camera, admin, status, busy, previewing, onShowPreview, onHidePreview, onStartDetection, onStopDetection, onDeleteCamera }: CameraCardProps) {
+export default function CameraCard({ camera, admin, status, busy, busyAction, previewing, onShowPreview, onHidePreview, onStartDetection, onStopDetection, onDeleteCamera }: CameraCardProps) {
   const running = Boolean(status?.running);
-  const hasWorker = hasWorkerStatus(status);
+  const hasError = Boolean(status?.error);
+  const hasFrame = Boolean(status?.hasFrame);
+  const isStarting = busy && busyAction === "starting";
+  const isStopping = busy && busyAction === "stopping";
+
+  // 3 trạng thái rõ ràng:
+  // 1. Chưa detect: !running && !hasError
+  // 2. Lỗi RTSP: hasError
+  // 3. Đang detect OK: running && hasFrame && !hasError
+  // + Đang kết nối: busy && isNotStarted
+
+  const isNotStarted = !running && !hasError;
+  const isError = hasError;
+  const isDetecting = running && hasFrame && !hasError;
+  const isConnecting = isStarting && isNotStarted;
+  const showStartButton = isNotStarted && !isStopping;
 
   return (
     <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.75rem", padding: "1.25rem", minWidth: 0 }}>
       <div style={{ background: "#020617", border: "1px solid var(--border)", borderRadius: "0.6rem", aspectRatio: "16/9", overflow: "hidden", marginBottom: "1rem", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        {running && previewing ? (
+        {isDetecting && previewing ? (
           <div style={{ position: "relative", width: "100%", height: "100%" }}>
-            <img src={camerasApi.getCameraStreamUrl(camera.id)} alt={`Live ${camera.name}`} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+            <Link href={`/cameras/${camera.id}`} style={{ display: "block", width: "100%", height: "100%", color: "inherit", textDecoration: "none" }}>
+              <img src={camerasApi.getCameraStreamUrl(camera.id)} alt={`Live ${camera.name}`} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+              <span style={{ position: "absolute", left: "0.6rem", bottom: "0.6rem", display: "inline-flex", alignItems: "center", gap: "0.35rem", background: "rgba(15,23,42,0.82)", border: "1px solid rgba(148,163,184,0.28)", borderRadius: "0.45rem", padding: "0.35rem 0.55rem", fontSize: "0.75rem", fontWeight: 600 }}>
+                <ExternalLink size={12} /> Chi tiết
+              </span>
+            </Link>
             <button type="button" onClick={() => onHidePreview(camera.id)} style={{ position: "absolute", top: "0.5rem", right: "0.5rem", ...btnStyle, background: "rgba(15,23,42,0.85)", color: "#fff", padding: "0.35rem 0.75rem" }}>
               Ẩn preview
             </button>
           </div>
-        ) : running ? (
-          <button type="button" onClick={() => onShowPreview(camera.id)} style={{ ...btnStyle, background: "var(--surface-2)", color: "var(--text)" }}>
-            Xem preview
-          </button>
+        ) : isDetecting && !previewing ? (
+          <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "0.75rem" }}>
+            <button type="button" onClick={() => onShowPreview(camera.id)} style={{ display: "inline-flex", alignItems: "center", gap: "0.45rem", ...btnStyle, background: "var(--surface-2)", color: "var(--text)" }}>
+              <Video size={15} /> Mở stream
+            </button>
+            <div style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>Đang detect, preview chưa được cấp</div>
+          </div>
+        ) : isConnecting ? (
+          <div style={{ textAlign: "center" }}>
+            <div style={{ color: "var(--text)", fontSize: "0.85rem", marginBottom: "0.5rem" }}>Đang kết nối camera...</div>
+            <div style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>Vui lòng chờ</div>
+          </div>
+        ) : isError ? (
+          <div style={{ padding: "1rem", textAlign: "center" }}>
+            <div style={{ color: "var(--accent)", fontSize: "0.85rem", marginBottom: "0.5rem" }}>Lỗi kết nối camera</div>
+            <div style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>{status?.error}</div>
+          </div>
         ) : (
-          <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>Preview chưa chạy</span>
+          <div style={{ textAlign: "center" }}>
+            <div style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>Camera chưa được kết nối</div>
+          </div>
         )}
       </div>
 
@@ -44,9 +81,9 @@ export default function CameraCard({ camera, admin, status, busy, previewing, on
           <div style={{ fontWeight: 600, marginBottom: "0.2rem" }}>{camera.name}</div>
           <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>{camera.location}</div>
         </div>
-        <span style={{ display: "flex", alignItems: "center", gap: "0.3rem", fontSize: "0.75rem", color: running ? "var(--green)" : hasWorker ? "var(--accent)" : "var(--text-muted)" }}>
-          {running ? <Wifi size={13} /> : <WifiOff size={13} />}
-          {running ? "Detecting" : hasWorker ? "Error" : "Stopped"}
+        <span style={{ display: "flex", alignItems: "center", gap: "0.3rem", fontSize: "0.75rem", color: isDetecting ? "var(--green)" : isError ? "var(--accent)" : "var(--text-muted)" }}>
+          {isDetecting ? <Wifi size={13} /> : <WifiOff size={13} />}
+          {isDetecting ? "Detecting" : isError ? "Error" : "Stopped"}
         </span>
       </div>
 
@@ -54,18 +91,14 @@ export default function CameraCard({ camera, admin, status, busy, previewing, on
         {camera.rtspUrl}
       </div>
 
-      {status?.error && (
-        <div style={{ color: "var(--accent)", fontSize: "0.78rem", marginBottom: "0.75rem" }}>{status.error}</div>
-      )}
-
       <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", justifyContent: "space-between" }}>
-        {admin && (hasWorker ? (
-          <button id={`stop-detect-${camera.id}`} disabled={busy} onClick={() => onStopDetection(camera.id)} style={{ display: "flex", alignItems: "center", gap: "0.35rem", ...btnStyle, background: "var(--surface-2)", color: "var(--text)", cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.7 : 1 }}>
-            {busy ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Square size={13} />} {busy ? "Đang dừng..." : "Stop"}
+        {admin && (showStartButton ? (
+          <button id={`start-detect-${camera.id}`} disabled={busy} onClick={() => onStartDetection(camera.id)} style={{ display: "flex", alignItems: "center", gap: "0.35rem", ...btnStyle, background: "var(--accent)", color: "#fff", cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.7 : 1 }}>
+            {isStarting ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Play size={13} />} {isStarting ? "Đang bật..." : "Start Detect"}
           </button>
         ) : (
-          <button id={`start-detect-${camera.id}`} disabled={busy} onClick={() => onStartDetection(camera.id)} style={{ display: "flex", alignItems: "center", gap: "0.35rem", ...btnStyle, background: "var(--accent)", color: "#fff", cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.7 : 1 }}>
-            {busy ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Play size={13} />} {busy ? "Đang bật..." : "Start Detect"}
+          <button id={`stop-detect-${camera.id}`} disabled={busy} onClick={() => onStopDetection(camera.id)} style={{ display: "flex", alignItems: "center", gap: "0.35rem", ...btnStyle, background: "var(--surface-2)", color: "var(--text)", cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.7 : 1 }}>
+            {isStopping ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Square size={13} />} {isStopping ? "Đang dừng..." : "Stop"}
           </button>
         ))}
 

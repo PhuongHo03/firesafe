@@ -21,6 +21,7 @@ frontend/
     │   ├── alerts/page.tsx     ← Route `/alerts` → AlertsScreen
     │   ├── alerts/[id]/page.tsx← Route `/alerts/[id]` → AlertDetailScreen
     │   ├── cameras/page.tsx    ← Route `/cameras` → CamerasScreen
+    │   ├── cameras/[id]/page.tsx← Route `/cameras/[id]` → CameraDetailScreen
     │   ├── logs/page.tsx       ← Route `/logs` → LogsScreen
     │   └── admin/users/page.tsx← Route `/admin/users` → AdminUsersScreen
     │
@@ -72,7 +73,7 @@ docker compose up --build -d
 Mở UI qua Nginx:
 
 ```text
-http://localhost:<FRONTEND_PORT>
+http://localhost:<NGINX_PORT>
 ```
 
 Mặc định:
@@ -86,7 +87,9 @@ Trong Docker Compose, frontend image được build với `NEXT_PUBLIC_API_URL`,
 ```text
 /api/v1/...               -> backend
 /api/cameras/...          -> AI Worker
+/api/monitoring/...       -> AI Worker runtime summary
 /api/admin/metrics        -> backend (Prometheus internal)
+/snapshots/...            -> MinIO snapshot proxy
 ```
 
 ### Chạy thủ công frontend từ source
@@ -102,7 +105,7 @@ npm start       # Chạy production build
 
 ## 🔧 Cấu hình
 
-Prefix `NEXT_PUBLIC_` bắt buộc để biến được expose ra phía client (browser). Docker Compose để các giá trị `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_AI_WORKER_URL` trống trong root `.env`, nên frontend gọi same-origin qua Nginx (`/api/v1`, `/api/cameras`, `/api/admin/metrics`). Vì Next.js bake `NEXT_PUBLIC_*` vào bundle lúc build, đổi public URL/port thì cần rebuild frontend image. Nếu đặt explicit URL, URL đó phải browser truy cập được, không dùng tên service nội bộ như `http://backend:8080`.
+Prefix `NEXT_PUBLIC_` bắt buộc để biến được expose ra phía client (browser). Docker Compose để các giá trị `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_AI_WORKER_URL` trống trong root `.env`, nên frontend gọi same-origin qua Nginx (`/api/v1`, `/api/admin`, `/api/cameras`, `/api/monitoring`, `/snapshots`). Vì Next.js bake `NEXT_PUBLIC_*` vào bundle lúc build, đổi public URL/port thì cần rebuild frontend image. Nếu đặt explicit URL, URL đó phải browser truy cập được, không dùng tên service nội bộ như `http://backend:8080`.
 
 ---
 
@@ -115,7 +118,9 @@ Prefix `NEXT_PUBLIC_` bắt buộc để biến được expose ra phía client 
 ```text
 /api/v1/...               -> backend
 /api/cameras/...          -> worker
+/api/monitoring/...       -> worker
 /api/admin/metrics        -> backend (Prometheus internal)
+/snapshots/...            -> MinIO snapshot proxy
 ```
 
 Các method chính theo feature:
@@ -123,17 +128,23 @@ Các method chính theo feature:
 ```ts
 authApi.login(username, password)              // → { token, username, roles }
 authApi.register(username, email, password)    // → AuthResponse
-alertsApi.getAlerts(page, size, token)         // → { content: Alert[], totalElements, totalPages }
+alertsApi.getAlerts(page, size, token, cameraId?) // → { content: Alert[], totalElements, totalPages }
 alertsApi.getAlert(id, token)                  // → Alert
 alertsApi.deleteAlert(id, token)               // → void
 alertsApi.deleteAllAlerts(token)               // → void
 camerasApi.getCameras(token)                   // → Camera[]
+camerasApi.getCamera(id, token)                // → Camera
 camerasApi.createCamera(data, token)           // → Camera
 camerasApi.deleteCamera(id, token)             // → void
 camerasApi.startCameraDetection(camera)        // → CameraDetectionStatus
 camerasApi.stopCameraDetection(cameraId)       // → CameraDetectionStatus
 camerasApi.getCameraDetectionStatus(cameraId)  // → CameraDetectionStatus
 camerasApi.getCameraStreamUrl(cameraId)        // → MJPEG stream URL
+camerasApi.checkDetectionCapacity(token)       // → { allowed: boolean, reason?: string }
+camerasApi.reserveCameraPreview(cameraId, token) // → PreviewReservation
+camerasApi.keepAliveCameraPreview(cameraId, token) // → PreviewReservation
+camerasApi.releaseCameraPreview(cameraId, token) // → PreviewReservation
+camerasApi.getMyPreviewReservations(token)     // → PreviewReservationsResponse
 monitoringApi.getDashboardMetrics(token)       // → backend GET /api/admin/metrics (15s auto-refresh)
 logsApi.getWorkerMonitoringSummary()           // → worker GET /api/monitoring/summary (2s auto-refresh)
 usersApi.getUsers(token)                       // → UserAccount[]
@@ -168,6 +179,14 @@ interface CameraDetectionStatus {
   error: string | null;
   lastAlertAt?: string | null;
   hasFrame?: boolean;
+}
+
+interface PreviewReservation {
+  reserved: boolean;
+  cameraId: number;
+  ttlSec: number;
+  keepaliveSec: number;
+  reason: string | null;
 }
 ```
 
@@ -209,7 +228,7 @@ Ví dụ: `app/cameras/page.tsx` → `features/cameras/screens/CamerasScreen.tsx
 
 Navigation sidebar dùng chung cho tất cả trang (trừ Login). Hiển thị:
 - Logo + brand name
-- Link Dashboard, Alerts, Cameras với highlight trang hiện tại
+- Link Dashboard, Alerts, Cameras, Logs và Admin Users với highlight trang hiện tại
 - Username + role của người đang đăng nhập (`Admin` hoặc `Viewer`)
 - Nút Đăng xuất (xóa cookie → redirect `/login`)
 
@@ -225,7 +244,7 @@ Navigation sidebar dùng chung cho tất cả trang (trừ Login). Hiển thị:
 - Có link sang `/register`
 - Hiển thị lỗi nếu sai credentials
 
-### `/register` — Đăng ký admin
+### `/register` — Đăng ký viewer
 
 - Form: tên tài khoản hiển thị, email, password, xác nhận password
 - Client validate email phải kết thúc bằng `@nhattienchung.vn`
@@ -241,12 +260,12 @@ Navigation sidebar dùng chung cho tất cả trang (trừ Login). Hiển thị:
 |---|---|
 | Infra metrics đầu trang | MariaDB, MinIO, Redis, RabbitMQ status + dung lượng/số lượng chính |
 | Cards monitoring | Backend status, AI Worker status, camera active/total, tổng alert |
-| System metrics | CPU %, RAM/Disk dạng used/total lấy từ Prometheus/node-exporter; GPU hiển thị `N/A` nếu chưa có GPU exporter |
-| API metrics | API latency/error/request count lấy từ Prometheus backend metrics |
-| Alert charts | Để trống nếu backend chưa export business metrics dạng Prometheus |
+| System metrics | CPU %, RAM/Disk dạng used/total lấy từ backend `/api/admin/metrics` dựa trên Prometheus/node-exporter; GPU hiển thị `N/A` nếu chưa có GPU exporter |
+| API metrics | API latency/error/request count lấy từ backend-normalized Prometheus metrics |
+| Alert charts | Alerts theo giờ và theo loại lấy từ backend admin metrics/business data |
 | AI Worker runtime | Bảng camera đang detect: running, hasFrame, detections, alerts, inference ms |
 | Bảng mới nhất | Hiển thị 5 alert mới nhất, không có nút xóa |
-| Auto-refresh | Tự động tải lại metrics mỗi 10 giây, alerts mỗi 30 giây |
+| Auto-refresh | Tự động tải lại metrics mỗi 15 giây, alerts mỗi 30 giây |
 | Click vào row | Chuyển sang trang chi tiết `/alerts/[id]` |
 | Xem tất cả | Chuyển sang `/alerts` để quản lý danh sách đầy đủ |
 
@@ -261,7 +280,7 @@ Chỉ Admin truy cập được. Trang này hiển thị danh sách tài khoản
 ### `/alerts/[id]` — Chi tiết Alert
 
 Hiển thị:
-- Ảnh snapshot từ MinIO (nếu có)
+- Ảnh snapshot từ MinIO (nếu có); frontend đổi URL nội bộ `http://minio:9000/...` thành same-origin `/snapshots/...` để browser tải qua Nginx
 - Tên camera, loại cảnh báo, độ tin cậy, thời gian, trạng thái
 - Link URL ảnh gốc để truy cập trực tiếp
 - Nút "Xóa" chỉ hiện với Admin để xóa alert hiện tại rồi quay về `/alerts`
@@ -271,12 +290,38 @@ Hiển thị:
 | Quyền | Tính năng |
 |---|---|
 | Mọi user | Xem danh sách camera (card grid) |
-| Mọi user | Xem trạng thái detect và MJPEG preview khi AI Worker đang chạy |
+| Mọi user | Xem trạng thái detect từ AI Worker |
 | ADMIN | Start/Stop Detect cho từng camera qua AI Worker |
+| ADMIN theo backend security hiện tại | Mở/ẩn stream UI qua preview reservation |
 | ADMIN | Nút "Thêm Camera" — form thêm mới |
 | ADMIN | Nút "Xóa" trên từng card |
 
-Form thêm camera yêu cầu: Tên, Vị trí, RTSP URL. Trang `/cameras` poll trạng thái AI Worker mỗi 10 giây, hiển thị lỗi RTSP nếu worker trả về `error`, và dùng `<img>` để render stream `/api/cameras/{id}/stream.mjpg` khi detect đang chạy. UI cho phép mở nhiều preview MJPEG; trước khi mở thêm preview sẽ query Prometheus qua `/prometheus/api/v1/query`, lấy mức tải cao nhất giữa CPU/RAM/GPU và chặn nếu ≥ 80% để tránh làm máy/Nginx/worker quá tải. Nếu worker đang lỗi/retry RTSP, UI vẫn hiện nút **Stop** để người dùng dừng worker thay vì hiện **Start Detect** gây spam start.
+Form thêm camera yêu cầu: Tên, Vị trí, RTSP URL.
+
+Flow detection + preview:
+
+1. Admin bấm **Start Detect** → frontend kiểm tra detection capacity (`GET /api/v1/detection/capacity`): CPU < `DETECTION_CPU_THRESHOLD`, GPU < `DETECTION_GPU_THRESHOLD`
+2. Nếu capacity pass → gọi AI Worker `/api/cameras/start`. Worker chờ RTSP connect + first frame tối đa 8s rồi trả về status thực tế (`running`, `hasFrame`, `error`).
+3. Nếu RTSP fail → UI hiện **"khối lỗi"** + nút Stop. Worker không chạy detection.
+4. Nếu RTSP OK + có frame → card hiện nút **Mở stream** thay vì tự render MJPEG.
+5. Bấm **Mở stream** → backend kiểm tra preview capacity (`POST /api/v1/cameras/{id}/preview/reserve`): CPU < `PREVIEW_CPU_THRESHOLD`. Theo `SecurityConfig` hiện tại, request POST preview này chỉ pass với ADMIN.
+6. Preview pass → card render MJPEG và gửi keepalive định kỳ. Preview fail → UI hiện lý do từ backend, detection vẫn chạy.
+
+Camera có 4 trạng thái: Chưa detect → Đang kết nối → Lỗi → Đang detect (+ stream hoặc quá tải). Nếu đang chạy OK rồi RTSP đứt → worker tự reconnect (exponential backoff 5s→30s), detection tạm dừng rồi tự resume.
+
+Nút **Stop** luôn hiện khi camera đã từng được Start Detect (dù đang lỗi hay đang detect). Khi bấm Stop, UI giữ trạng thái **Đang dừng...** tối thiểu `CAMERA_STOP_MIN_BUSY_MS = 600ms` để tránh nút chớp ngược về Stop trước khi về Start Detect. Nút **Start Detect** chỉ hiện khi camera chưa start / đã stop hẳn.
+
+Khi card đang preview, vùng stream là link tới `/cameras/[id]`. Nếu detection đang chạy nhưng preview chưa được cấp, card không cho click vào trang chi tiết camera.
+
+### `/cameras/[id]` — Chi tiết Camera
+
+Trang chi tiết camera chỉ dùng để xem một camera đang được stream trên UI:
+
+- Load thông tin camera (`GET /api/v1/cameras/{id}`), status worker, preview reservations của user và tối đa 50 alert mới nhất của camera.
+- Chỉ render stream lớn nếu reservation còn sống, worker `running`, `hasFrame=true` và không có `error`.
+- Gửi keepalive định kỳ theo `keepaliveSec`; nếu reservation hết hạn thì stream bị tắt và hiện lỗi.
+- Bên dưới stream hiển thị name/hãng camera, location, total alerts.
+- Có dropdown và list nhỏ các alert của camera; bấm vào alert chuyển tới `/alerts/[id]`.
 
 ### `/logs` — Runtime Logs
 
@@ -325,4 +370,4 @@ CSS Variables được định nghĩa trong `globals.css`:
 
 ---
 
-*Tài liệu phản ánh trạng thái frontend tại **Giai đoạn 9**. Frontend dùng cấu trúc feature-based (`src/app` route mỏng → `src/features/*/screens` → hooks/API/types theo feature), có login/register viewer-pending-activation (`@nhattienchung.vn`), `/admin/users` để Admin kích hoạt/chỉnh role, Dashboard tổng quan query Prometheus qua Nginx và map thành metrics UI, trang `/alerts` quản lý danh sách/xóa alert theo quyền, trang `/cameras` tích hợp Worker RTSP preview/detect realtime, trang `/logs` hiển thị AI Worker runtime monitoring snapshot dạng cards/table, và có Dockerfile để build bằng root `.env`/Compose; WebSocket real-time sẽ bổ sung sau nếu cần.*
+*Tài liệu phản ánh trạng thái frontend tại **Giai đoạn 9**. Frontend dùng cấu trúc feature-based (`src/app` route mỏng → `src/features/*/screens` → hooks/API/types theo feature), có login/register viewer-pending-activation (`@nhattienchung.vn`), `/admin/users` để Admin kích hoạt/chỉnh role, Dashboard tổng quan gọi backend `/api/admin/metrics` để nhận Prometheus/business metrics đã normalize, trang `/alerts` quản lý danh sách/xóa alert theo quyền và render snapshot qua `/snapshots`, trang `/cameras` tích hợp Worker RTSP detect + preview reservation, trang `/cameras/[id]` xem stream lớn khi reservation còn sống, trang `/logs` hiển thị AI Worker runtime monitoring snapshot dạng cards/table, và có Dockerfile để build bằng root `.env`/Compose; WebSocket real-time sẽ bổ sung sau nếu cần.*

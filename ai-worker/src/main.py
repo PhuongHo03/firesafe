@@ -13,6 +13,13 @@ def parse_rtsp_transports(value: str) -> list[str]:
     return transports or ["default", "udp", "tcp"]
 
 
+def parse_alert_labels(value: str) -> frozenset[str]:
+    labels = frozenset(item.strip().lower() for item in value.split(",") if item.strip())
+    if not labels:
+        raise ValueError("AI worker alert labels cannot be empty")
+    return labels
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="FireSafe AI Worker HTTP service for RTSP preview and detection.")
     parser.add_argument("--host", default="127.0.0.1", help="Service bind host")
@@ -36,11 +43,13 @@ def parse_args():
     parser.add_argument("--rtsp-buffer-size", type=int, default=int(os.getenv("AI_WORKER_RTSP_BUFFER_SIZE", "1")), help="OpenCV RTSP buffer size; 0 disables setting it")
     parser.add_argument("--overlay-ttl-seconds", type=float, default=float(os.getenv("AI_WORKER_OVERLAY_TTL_SECONDS", "2.0")), help="Seconds to keep drawing latest detections on live preview")
     parser.add_argument("--sustained-detection-seconds", type=float, default=float(os.getenv("AI_WORKER_SUSTAINED_DETECTION_SECONDS", "3.0")), help="Seconds detection must persist before sending an alert")
+    parser.add_argument("--alert-labels", default=os.getenv("AI_WORKER_ALERT_LABELS", "fire,smoke"), help="Comma-separated YOLO labels that can create alerts")
     parser.add_argument("--batch-max-size", type=int, default=int(os.getenv("AI_WORKER_BATCH_MAX_SIZE", "1")), help="Max cross-camera inference batch size")
     parser.add_argument("--batch-max-wait-ms", type=float, default=float(os.getenv("AI_WORKER_BATCH_MAX_WAIT_MS", "50")), help="Max milliseconds to wait before running a partial inference batch")
     parser.add_argument("--scheduler-idle-sleep-ms", type=float, default=float(os.getenv("AI_WORKER_SCHEDULER_IDLE_SLEEP_MS", "5")), help="Scheduler idle sleep in milliseconds")
     args = parser.parse_args()
     args.rtsp_transports = parse_rtsp_transports(args.rtsp_transports)
+    args.alert_labels = parse_alert_labels(args.alert_labels)
     return args
 
 
@@ -57,6 +66,7 @@ def main():
     print(f"FireSafe AI Worker service listening on http://{args.host}:{args.port}", flush=True)
     print(f"Using model: {model_path}", flush=True)
     print(f"RTSP transports: {', '.join(args.rtsp_transports)}; buffer size: {args.rtsp_buffer_size}", flush=True)
+    print(f"Alert labels: {', '.join(sorted(args.alert_labels))}", flush=True)
     print(f"Inference batch max size: {args.batch_max_size}; max wait: {args.batch_max_wait_ms}ms", flush=True)
     try:
         server.serve_forever()

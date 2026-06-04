@@ -7,6 +7,8 @@ logs/
 !frontend/src/features/logs/
 !frontend/src/features/logs/**
 *.log
+*.tmp
+*.temp
 
 # Env / secrets
 .env
@@ -23,6 +25,7 @@ venv/
 ai-worker/venv/
 ai-worker/models/
 video-detect/venv/
+.pytest_cache/
 
 # Node / Next
 node_modules/
@@ -35,18 +38,17 @@ next-env.d.ts
 
 # Java / Maven
 backend/target/
+target/
 backend/.mvn/wrapper/maven-wrapper.jar
 jdk-*/
 
 # Local-only project instructions/docs
 .agents/
 CLAUDE.md
-docs/planning/
 docs/plannings/
 frontend/AGENTS.md
 frontend/CLAUDE.md
 frontend/README.md
-frontend/.gitingnore
 frontend/.gitignore
 
 # IDE / OS
@@ -65,3 +67,9 @@ ai-worker/runs/
 
 # MinIO / generated snapshots
 snapshots/
+
+# Docker/local generated data
+prometheus_data/
+redisinsight_data/
+mariadb_data/
+minio_data/

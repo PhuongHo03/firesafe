@@ -85,6 +85,7 @@ class AIWorkerHandler(BaseHTTPRequestHandler):
             rtsp_buffer_size=self.server.rtsp_buffer_size,
             overlay_ttl_seconds=float(payload.get("overlayTtlSeconds", self.server.overlay_ttl_seconds)),
             sustained_detection_seconds=float(payload.get("sustainedDetectionSeconds", self.server.sustained_detection_seconds)),
+            alert_labels=self.server.alert_labels,
         )
         with WORKERS_LOCK:
             old_worker = WORKERS.get(camera_id)
@@ -104,7 +105,8 @@ class AIWorkerHandler(BaseHTTPRequestHandler):
             WORKERS[camera_id] = worker
             STATUS_CACHE.pop(camera_id, None)
         worker.start()
-        self._json(200, {"cameraId": camera_id, "running": True})
+        source.wait_for_ready_or_first_failure(float(payload.get("startWaitSeconds", 8)))
+        self._json(200, worker.status())
 
     def _stop_camera(self):
         payload = self._read_json()
@@ -281,6 +283,7 @@ class AIWorkerServer(ThreadingHTTPServer):
         self.rtsp_buffer_size = args.rtsp_buffer_size
         self.overlay_ttl_seconds = args.overlay_ttl_seconds
         self.sustained_detection_seconds = args.sustained_detection_seconds
+        self.alert_labels = args.alert_labels
         self.inference_scheduler = InferenceScheduler(
             self.model_path,
             args.batch_max_size,

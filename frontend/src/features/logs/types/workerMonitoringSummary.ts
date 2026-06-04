@@ -25,6 +25,6 @@ export interface CameraRuntimeStatus {
   lastAlertAt: string | null;
   hasFrame: boolean;
   detectionsTotal?: number;
-  alertsTotal?: number;
+  alertsSentTotal?: number;
   inferenceMsAvg?: number;
 }

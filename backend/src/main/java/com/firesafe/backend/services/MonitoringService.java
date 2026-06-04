@@ -74,6 +74,33 @@ public class MonitoringService {
         return metrics;
     }
 
+    public double getCurrentCpuPct() {
+        try {
+            double nodeUp = queryValue("up{job=\"node\"}");
+            if (nodeUp < 1) return 0;
+            double cpuIdle = queryValue("avg(rate(node_cpu_seconds_total{job=\"node\",mode=\"idle\"}[5m]))");
+            return clamp((1 - cpuIdle) * 100, 0, 100);
+        } catch (Exception ex) {
+            return 0;
+        }
+    }
+
+    public double getCurrentGpuUtilPct() {
+        try {
+            return queryValue("dcgm_gpu_utilization{job=\"gpu\"}");
+        } catch (Exception ex) {
+            return 0;
+        }
+    }
+
+    public boolean hasGpu() {
+        try {
+            return queryValue("up{job=\"gpu\"}") >= 1;
+        } catch (Exception ex) {
+            return false;
+        }
+    }
+
     private AdminMetricsResponse readCachedAdminMetrics() {
         try {
             String cached = redisTemplate.opsForValue().get(ADMIN_METRICS_CACHE_KEY);

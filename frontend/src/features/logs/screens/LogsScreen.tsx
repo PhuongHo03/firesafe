@@ -156,7 +156,7 @@ function LogsContent({ summary, cameraMap }: { summary: WorkerMonitoringSummary;
                   <Td><Badge ok={camera.running}>{fmtBool(camera.running)}</Badge></Td>
                   <Td><Badge ok={camera.hasFrame}>{fmtBool(camera.hasFrame)}</Badge></Td>
                   <Td>{camera.detectionsTotal ?? 0}</Td>
-                  <Td>{camera.alertsTotal ?? 0}</Td>
+                  <Td>{camera.alertsSentTotal ?? 0}</Td>
                   <Td>{fmtNumber(camera.inferenceMsAvg)} ms</Td>
                   <Td>{fmtTime(camera.lastAlertAt)}</Td>
                   <Td>{camera.error ?? "-"}</Td>

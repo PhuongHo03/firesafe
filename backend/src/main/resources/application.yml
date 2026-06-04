@@ -47,6 +47,7 @@ minio:
 
 rabbitmq:
   exchange: alert.exchange
+  notification-queue-count: ${RABBITMQ_NOTIFICATION_QUEUE_COUNT:1}
   queue:
     notification: alert.notification.queue
   routing-key:
@@ -59,7 +60,10 @@ preview:
   cpu-threshold: ${PREVIEW_CPU_THRESHOLD:80}
   ttl-seconds: ${PREVIEW_TTL_SEC:120}
   keepalive-seconds: ${PREVIEW_KEEPALIVE_SEC:30}
-  max-global: ${PREVIEW_MAX_GLOBAL:4}
+
+detection:
+  cpu-threshold: ${DETECTION_CPU_THRESHOLD:70}
+  gpu-threshold: ${DETECTION_GPU_THRESHOLD:80}
 
 firesafe:
   prometheus:
