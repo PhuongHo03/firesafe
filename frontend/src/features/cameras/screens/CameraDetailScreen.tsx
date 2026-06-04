@@ -47,7 +47,7 @@ export default function CameraDetailScreen() {
       try {
         const [cameraData, statusData, reservationsData, alertsData] = await Promise.all([
           camerasApi.getCamera(cameraId, token),
-          camerasApi.getCameraDetectionStatus(cameraId),
+          camerasApi.getCameraDetectionStatus(cameraId, token),
           camerasApi.getMyPreviewReservations(token),
           alertsApi.getAlerts(0, CAMERA_DETAIL_ALERT_LIMIT, token, cameraId),
         ]);

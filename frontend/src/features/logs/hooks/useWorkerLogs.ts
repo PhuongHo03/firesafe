@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { logsApi } from "@/features/logs/api/logsApi";
 import { WorkerMonitoringSummary } from "@/features/logs/types/workerMonitoringSummary";
+import { getToken } from "@/shared/utils/auth";
 
 const REFRESH_INTERVAL_MS = 2000;
 
@@ -18,7 +19,11 @@ export function useWorkerLogs() {
   const loadSummary = useCallback(async (showRefreshing = false) => {
     if (showRefreshing) setRefreshing(true);
     try {
-      const data = await logsApi.getWorkerMonitoringSummary();
+      const token = getToken();
+      if (!token) {
+        throw new Error("Vui lòng đăng nhập để xem runtime logs");
+      }
+      const data = await logsApi.getWorkerMonitoringSummary(token);
       setSummary(data);
       setError(null);
       setLastUpdatedAt(new Date());

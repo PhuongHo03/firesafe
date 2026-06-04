@@ -135,6 +135,20 @@ public class MonitoringService {
         double aiWorkerUp = 0;
         double aiWorkers = 0;
         double aiSources = 0;
+        double nginxUp = 0;
+        double nginxRequestsPerSecond = 0;
+        double nginxActiveConnections = 0;
+        double nginxReadingConnections = 0;
+        double nginxWritingConnections = 0;
+        double nginxWaitingConnections = 0;
+        double nginxAcceptedConnectionsPerSecond = 0;
+        double nginxHandledConnectionsPerSecond = 0;
+        double nginxProbeSuccess = 0;
+        double nginxProbeDurationSeconds = 0;
+        double nginxProbeHttpStatusCode = 0;
+        double frontendProbeSuccess = 0;
+        double frontendProbeDurationSeconds = 0;
+        double frontendProbeHttpStatusCode = 0;
         double redisUp = 0;
         double redisMemory = 0;
         double redisKeys = 0;
@@ -171,6 +185,20 @@ public class MonitoringService {
             aiDetections = queryVector("firesafe_ai_detections_total{job=\"ai-worker\"}");
             aiAlerts = queryVector("firesafe_ai_alerts_sent_total{job=\"ai-worker\"}");
             aiInferenceMs = queryVector("firesafe_ai_inference_ms_avg{job=\"ai-worker\"}");
+            nginxUp = queryValue("up{job=\"nginx\"}");
+            nginxRequestsPerSecond = queryValue("rate(nginx_http_requests_total{job=\"nginx\"}[5m])");
+            nginxActiveConnections = queryValue("nginx_connections_active{job=\"nginx\"}");
+            nginxReadingConnections = queryValue("nginx_connections_reading{job=\"nginx\"}");
+            nginxWritingConnections = queryValue("nginx_connections_writing{job=\"nginx\"}");
+            nginxWaitingConnections = queryValue("nginx_connections_waiting{job=\"nginx\"}");
+            nginxAcceptedConnectionsPerSecond = queryValue("rate(nginx_connections_accepted{job=\"nginx\"}[5m])");
+            nginxHandledConnectionsPerSecond = queryValue("rate(nginx_connections_handled{job=\"nginx\"}[5m])");
+            nginxProbeSuccess = queryValue("probe_success{job=\"blackbox\",instance=\"http://nginx/health\"}");
+            nginxProbeDurationSeconds = queryValue("probe_duration_seconds{job=\"blackbox\",instance=\"http://nginx/health\"}");
+            nginxProbeHttpStatusCode = queryValue("probe_http_status_code{job=\"blackbox\",instance=\"http://nginx/health\"}");
+            frontendProbeSuccess = queryValue("probe_success{job=\"blackbox\",instance=\"http://frontend:3000\"}");
+            frontendProbeDurationSeconds = queryValue("probe_duration_seconds{job=\"blackbox\",instance=\"http://frontend:3000\"}");
+            frontendProbeHttpStatusCode = queryValue("probe_http_status_code{job=\"blackbox\",instance=\"http://frontend:3000\"}");
             redisUp = queryValue("up{job=\"redis\"}");
             redisMemory = queryValue("redis_memory_used_bytes{job=\"redis\"}");
             redisKeys = queryValue("sum(redis_db_keys{job=\"redis\"})");
@@ -216,6 +244,29 @@ public class MonitoringService {
                         aiWorkers,
                         aiSources,
                         aiCameras,
+                        prometheusError
+                ),
+                new AdminMetricsResponse.NginxMetrics(
+                        statusFromUp(nginxUp),
+                        nginxRequestsPerSecond,
+                        nginxActiveConnections,
+                        nginxReadingConnections,
+                        nginxWritingConnections,
+                        nginxWaitingConnections,
+                        nginxAcceptedConnectionsPerSecond,
+                        nginxHandledConnectionsPerSecond,
+                        new AdminMetricsResponse.EndpointProbeMetrics(
+                                statusFromUp(nginxProbeSuccess),
+                                nginxProbeDurationSeconds,
+                                nginxProbeHttpStatusCode,
+                                prometheusError
+                        ),
+                        prometheusError
+                ),
+                new AdminMetricsResponse.EndpointProbeMetrics(
+                        statusFromUp(frontendProbeSuccess),
+                        frontendProbeDurationSeconds,
+                        frontendProbeHttpStatusCode,
                         prometheusError
                 ),
                 new AdminMetricsResponse.SystemMetrics(

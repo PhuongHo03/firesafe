@@ -115,6 +115,7 @@ services:
       PREVIEW_KEEPALIVE_SEC: ${PREVIEW_KEEPALIVE_SEC:-30}
       DETECTION_CPU_THRESHOLD: ${DETECTION_CPU_THRESHOLD:-70}
       DETECTION_GPU_THRESHOLD: ${DETECTION_GPU_THRESHOLD:-80}
+      AI_WORKER_BASE_URL: http://worker:8090
       FIRESAFE_PROMETHEUS_BASE_URL: http://prometheus:9090
     expose:
       - "8080"
@@ -259,19 +260,39 @@ services:
     networks:
       - firesafe-net
 
+  nginx-exporter:
+    image: nginx/nginx-prometheus-exporter:1.5.1
+    container_name: firesafe-nginx-exporter
+    command:
+      - --nginx.scrape-uri=http://nginx/nginx_status
+    expose:
+      - "9113"
+    networks:
+      - firesafe-net
+
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.25.0
+    container_name: firesafe-blackbox-exporter
+    command:
+      - --config.file=/etc/blackbox_exporter/blackbox.yml
+    expose:
+      - "9115"
+    volumes:
+      - ./infra/blackbox/blackbox.yml:/etc/blackbox_exporter/blackbox.yml:ro
+    networks:
+      - firesafe-net
+
   frontend:
     build:
       context: ./frontend
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
-        NEXT_PUBLIC_AI_WORKER_URL: ${NEXT_PUBLIC_AI_WORKER_URL:-}
     image: firesafe-frontend:latest
     container_name: firesafe-frontend
     environment:
       TZ: ${TZ:-ICT-7}
       PORT: 3000
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
-      NEXT_PUBLIC_AI_WORKER_URL: ${NEXT_PUBLIC_AI_WORKER_URL:-}
     expose:
       - "3000"
     depends_on:

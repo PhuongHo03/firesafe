@@ -30,6 +30,7 @@ backend/
     │   │   │   ├── AlertController.java             ← GET/POST/DELETE /api/v1/alerts
     │   │   │   ├── AdminMetricsController.java      ← GET /api/admin/metrics (ADMIN only)
     │   │   │   ├── CameraController.java            ← CRUD /api/v1/cameras
+    │   │   │   ├── CameraWorkerController.java      ← backend gateway start/stop/status/stream
     │   │   │   ├── CameraPreviewController.java    ← POST /api/v1/cameras/{id}/preview/reserve|keepalive|release, GET /preview/my
     │   │   │   ├── DetectionCapacityController.java← GET /api/v1/detection/capacity
     │   │   │   ├── MetricsExportController.java     ← GET /api/v1/metrics/export
@@ -512,6 +513,7 @@ RegisterRequest(username,email,password)
 | `/api/v1/alerts` | POST | AI Worker gửi alert mới |
 | `/api/v1/alerts?cameraId=1&page=0` | GET | Danh sách alerts (filter + phân trang) |
 | `/api/v1/alerts/{id}` | GET | Chi tiết một alert |
+| `/api/v1/alerts/{id}/image` | GET | Trả snapshot PNG qua backend gateway; backend đọc MinIO nội bộ |
 | `/api/v1/alerts` | DELETE | Xóa tất cả alert (ADMIN), cleanup MinIO snapshot và Redis debounce |
 | `/api/v1/alerts/{id}` | DELETE | Xóa một alert (ADMIN), cleanup MinIO snapshot và Redis debounce nếu key còn trỏ tới alert đó |
 
@@ -524,6 +526,15 @@ RegisterRequest(username,email,password)
 | `/api/v1/cameras` | POST | ADMIN | Thêm camera |
 | `/api/v1/cameras/{id}` | PUT | ADMIN | Cập nhật camera |
 | `/api/v1/cameras/{id}` | DELETE | ADMIN | Xóa camera |
+
+#### `CameraWorkerController`
+
+| Endpoint | Method | Auth | Mô tả |
+|---|---|---|---|
+| `/api/v1/cameras/{id}/detection/start` | POST | ADMIN | Backend lấy RTSP URL từ DB và gọi worker `/api/cameras/start` nội bộ |
+| `/api/v1/cameras/{id}/detection/stop` | POST | ADMIN | Backend gọi worker `/api/cameras/stop` nội bộ và release preview reservations của camera |
+| `/api/v1/cameras/{id}/detection/status` | GET | ADMIN/VIEWER | Backend gọi worker `/api/cameras/{id}/status` nội bộ |
+| `/api/v1/cameras/{id}/stream.mjpg` | GET | ADMIN/VIEWER + preview reservation | Backend kiểm tra JWT/cookie + Redis reservation rồi proxy MJPEG stream từ worker nội bộ |
 
 #### `CameraPreviewController`
 
@@ -538,13 +549,14 @@ RegisterRequest(username,email,password)
 
 | Endpoint | Method | Auth | Mô tả |
 |---|---|---|---|
-| `/api/v1/detection/capacity` | GET | Mọi role đã đăng nhập | Trả `{allowed, reason}` dựa trên CPU/GPU threshold trước khi frontend gọi AI Worker `/api/cameras/start` |
+| `/api/v1/detection/capacity` | GET | Mọi role đã đăng nhập | Trả `{allowed, reason}` dựa trên CPU/GPU threshold trước khi frontend gọi backend detection gateway |
 
 #### `AdminMetricsController`, `MonitoringController`, `MetricsExportController`
 
 | Endpoint | Method | Auth | Mô tả |
 |---|---|---|---|
 | `/api/admin/metrics` | GET | ADMIN | Dashboard metrics đã normalize; backend query Prometheus nội bộ và cache Redis |
+| `/api/admin/worker/monitoring/summary` | GET | ADMIN | Backend gọi AI Worker `/api/monitoring/summary` nội bộ và trả runtime snapshot cho Logs page |
 | `/api/v1/monitoring/summary` | GET | Token | Monitoring summary legacy: backend status, alert totals/24h/high-confidence, camera total/active |
 | `/api/v1/metrics/export` | GET | Public | Export business metrics nhẹ cho Prometheus/dashboard migration |
 
@@ -652,7 +664,7 @@ Khi user bấm **Start Detect**:
 1. Frontend gọi `GET /api/v1/detection/capacity`
 2. Backend check `CPU < DETECTION_CPU_THRESHOLD`
 3. Nếu có GPU: check `GPU < DETECTION_GPU_THRESHOLD`
-4. Pass → start worker. Fail → frontend hiện lỗi, không start.
+4. Pass → frontend gọi backend detection gateway để start worker. Fail → frontend hiện lỗi, không start.
 
 ### Preview gate (`PREVIEW_*`)
 
@@ -679,7 +691,7 @@ Mỗi camera có duy nhất 1 `SharedRtspSource`. Stream UI và inference schedu
 ```text
 RTSP source
   ├─ latest frame → scheduler → YOLO detect
-  └─ latest JPEG → /api/cameras/{id}/stream.mjpg → UI
+  └─ latest JPEG → worker nội bộ → backend /api/v1/cameras/{id}/stream.mjpg → UI
 ```
 
 UI không tự mở stream ngay sau Start Detect. Sau khi detection chạy và có frame, card camera hiện nút **Mở stream**; frontend gọi preview reserve trước, nếu pass mới render MJPEG. Trang `/cameras/[id]` chỉ xem được khi reservation còn sống và worker status đang `running + hasFrame + không error`.

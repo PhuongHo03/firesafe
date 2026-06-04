@@ -17,10 +17,12 @@ export function useCameraDetection(cameras: Camera[], setError: (error: string) 
   const keepaliveSecondsRef = useRef(30);
 
   async function loadStatuses() {
+    const token = getToken();
+    if (!token) return;
     const entries = await Promise.all(
       cameras.map(async camera => {
         try {
-          return [camera.id, await camerasApi.getCameraDetectionStatus(camera.id)] as const;
+          return [camera.id, await camerasApi.getCameraDetectionStatus(camera.id, token)] as const;
         } catch {
           return [camera.id, buildWorkerUnavailableStatus(camera.id)] as const;
         }
@@ -48,12 +50,14 @@ export function useCameraDetection(cameras: Camera[], setError: (error: string) 
     let loadingStatuses = false;
     async function loadCurrentStatuses() {
       if (loadingStatuses) return;
+      const token = getToken();
+      if (!token) return;
       loadingStatuses = true;
       try {
         const entries = await Promise.all(
           cameras.map(async camera => {
             try {
-              return [camera.id, await camerasApi.getCameraDetectionStatus(camera.id)] as const;
+              return [camera.id, await camerasApi.getCameraDetectionStatus(camera.id, token)] as const;
             } catch {
               return [camera.id, buildWorkerUnavailableStatus(camera.id)] as const;
             }
@@ -170,7 +174,7 @@ export function useCameraDetection(cameras: Camera[], setError: (error: string) 
         return;
       }
 
-      const status = await camerasApi.startCameraDetection(camera);
+      const status = await camerasApi.startCameraDetection(camera.id, token);
       setDetectionStatus(prev => setCameraStatus(prev, cameraId, status));
       setError("");
       // busyCameraId auto-cleared by status watcher effect when error or hasFrame
@@ -186,7 +190,12 @@ export function useCameraDetection(cameras: Camera[], setError: (error: string) 
     setBusyCameraAction("stopping");
     const minimumBusy = wait(CAMERA_STOP_MIN_BUSY_MS);
     try {
-      const status = await camerasApi.stopCameraDetection(cameraId);
+      const token = getToken();
+      if (!token) {
+        setError("Vui lòng đăng nhập để stop detect");
+        return;
+      }
+      const status = await camerasApi.stopCameraDetection(cameraId, token);
       await minimumBusy;
       setDetectionStatus(prev => setCameraStatus(prev, cameraId, status));
       hidePreview(cameraId);

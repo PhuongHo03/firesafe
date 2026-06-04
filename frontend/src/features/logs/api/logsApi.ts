@@ -1,8 +1,10 @@
-import { requestAI } from "@/shared/utils/http";
+import { request } from "@/shared/utils/http";
 import { WorkerMonitoringSummary } from "@/features/logs/types/workerMonitoringSummary";
 
 export const logsApi = {
-  getWorkerMonitoringSummary() {
-    return requestAI<WorkerMonitoringSummary>("/api/monitoring/summary");
+  getWorkerMonitoringSummary(token: string) {
+    return request<WorkerMonitoringSummary>("/api/admin/worker/monitoring/summary", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
   },
 };

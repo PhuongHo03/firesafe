@@ -1,9 +1,9 @@
 import { Camera, Clock, Flame, Tag } from "lucide-react";
-import { formatAlertDateTime, replaceMinIOInternalUrl } from "@/features/alerts/dtos/alertViewDto";
+import { formatAlertDateTime, getAlertImageUrl } from "@/features/alerts/dtos/alertViewDto";
 import { Alert } from "@/features/alerts/types/alert";
 
 export default function AlertDetailCard({ alert }: { alert: Alert }) {
-  const imageUrl = replaceMinIOInternalUrl(alert.imageUrl);
+  const imageUrl = getAlertImageUrl(alert);
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
       <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.75rem", overflow: "hidden", aspectRatio: "4/3", display: "flex", alignItems: "center", justifyContent: "center" }}>

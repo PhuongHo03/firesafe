@@ -66,6 +66,8 @@ detection:
   gpu-threshold: ${DETECTION_GPU_THRESHOLD:80}
 
 firesafe:
+  ai-worker:
+    base-url: ${AI_WORKER_BASE_URL:http://localhost:8090}
   prometheus:
     base-url: ${FIRESAFE_PROMETHEUS_BASE_URL:http://localhost:9090}
   preset-camera:

@@ -1,4 +1,4 @@
-import { getAIWorkerUrl, request, requestAI } from "@/shared/utils/http";
+import { getApiUrl, request } from "@/shared/utils/http";
 import { Camera, CameraDetectionStatus, PreviewReservation, PreviewReservationsResponse } from "@/features/cameras/types/camera";
 
 export const camerasApi = {
@@ -35,22 +35,24 @@ export const camerasApi = {
     });
   },
 
-  startCameraDetection(camera: Camera) {
-    return requestAI<CameraDetectionStatus>("/api/cameras/start", {
+  startCameraDetection(cameraId: number, token: string) {
+    return request<CameraDetectionStatus>(`/api/v1/cameras/${cameraId}/detection/start`, {
       method: "POST",
-      body: JSON.stringify({ cameraId: camera.id, rtspUrl: camera.rtspUrl }),
+      headers: { Authorization: `Bearer ${token}` },
     });
   },
 
-  stopCameraDetection(cameraId: number) {
-    return requestAI<CameraDetectionStatus>("/api/cameras/stop", {
+  stopCameraDetection(cameraId: number, token: string) {
+    return request<CameraDetectionStatus>(`/api/v1/cameras/${cameraId}/detection/stop`, {
       method: "POST",
-      body: JSON.stringify({ cameraId }),
+      headers: { Authorization: `Bearer ${token}` },
     });
   },
 
-  getCameraDetectionStatus(cameraId: number) {
-    return requestAI<CameraDetectionStatus>(`/api/cameras/${cameraId}/status`);
+  getCameraDetectionStatus(cameraId: number, token: string) {
+    return request<CameraDetectionStatus>(`/api/v1/cameras/${cameraId}/detection/status`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
   },
 
   reserveCameraPreview(cameraId: number, token: string) {
@@ -81,6 +83,6 @@ export const camerasApi = {
   },
 
   getCameraStreamUrl(cameraId: number) {
-    return getAIWorkerUrl(`/api/cameras/${cameraId}/stream.mjpg`);
+    return getApiUrl(`/api/v1/cameras/${cameraId}/stream.mjpg`);
   },
 };

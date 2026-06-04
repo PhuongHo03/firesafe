@@ -45,16 +45,16 @@ flowchart TD
     User[Browser Client] -->|http://host:3000| Nginx[Nginx Reverse Proxy]
     Nginx -->|/| Frontend[Next.js Frontend]
     Nginx -->|/api/v1 and /api/admin| Backend[Spring Boot Backend]
-    Nginx -->|/api/cameras and /api/monitoring| Worker[AI Worker HTTP Service]
-    Nginx -->|/snapshots| MinIO[(MinIO Snapshots)]
 
     Frontend -->|JWT API requests| Backend
-    Frontend -->|Start/Stop/Status/Stream| Worker
+    Frontend -->|Start/Stop/Status/Stream/Image via backend| Backend
 
     Backend -->|Users, roles, cameras, alerts| MariaDB[(MariaDB)]
     Backend -->|Alert debounce, preview reservations, metrics cache| Redis[(Redis)]
     Backend -->|Notification jobs| RabbitMQ[(RabbitMQ)]
     Backend -->|Internal metrics queries| Prometheus[(Prometheus)]
+    Backend -->|Internal worker gateway| Worker[AI Worker HTTP Service]
+    Backend -->|Read snapshot objects| MinIO[(MinIO Snapshots)]
 
     Worker -->|Login + reserve alert + create alert| Backend
     Worker -->|Annotated PNG snapshots| MinIO
@@ -120,14 +120,12 @@ Password: admin123
 docker compose ps
 Invoke-WebRequest http://localhost:3000/health -UseBasicParsing
 Invoke-RestMethod http://localhost:3000/actuator/health
-Invoke-RestMethod http://localhost:3000/worker/health
 ```
 
 ```bash
 docker compose ps
 curl http://localhost:3000/health
 curl http://localhost:3000/actuator/health
-curl http://localhost:3000/worker/health
 ```
 
 ### 5. Verify Admin Metrics
@@ -248,7 +246,7 @@ Place model weights under `ai-worker/models/` or pass `--model`.
 | 2 | Backend | Queries Prometheus internally and merges DB business counters |
 | 3 | Redis | Caches admin metrics snapshot for 10 seconds |
 | 4 | Frontend Dashboard | Calls `/api/admin/metrics` with admin JWT |
-| 5 | Logs Page | Polls AI Worker `/api/monitoring/summary` for latest runtime status |
+| 5 | Logs Page | Polls backend `/api/admin/worker/monitoring/summary`; backend reads AI Worker internally |
 
 ---
 
@@ -256,10 +254,10 @@ Place model weights under `ai-worker/models/` or pass `--model`.
 
 | Profile | Entry Point | Description | Host Port |
 |---|---|---|---|
-| **Nginx App Gateway** | `infra/nginx/default.conf` | Routes frontend, backend API, worker API, snapshots, health endpoints | `0.0.0.0:3000` |
-| **Backend API** | `backend/` | Spring Boot API, security, DB access, alert workflow, metrics aggregation | Internal `8080` |
+| **Nginx App Gateway** | `infra/nginx/default.conf` | Routes frontend, backend API, Swagger/Actuator health, and authenticated MJPEG stream gateway | `0.0.0.0:3000` |
+| **Backend API** | `backend/` | Spring Boot API, security, DB access, alert workflow, worker/MinIO gateway, metrics aggregation | Internal `8080` |
 | **Frontend UI** | `frontend/` | Next.js operations dashboard and route screens | Internal `3000` |
-| **AI Worker** | `ai-worker/` | RTSP reader, MJPEG stream, YOLO inference, alert upload/post | Internal `8090` |
+| **AI Worker** | `ai-worker/` | RTSP reader, MJPEG stream, YOLO inference, alert upload/post; internal only behind backend gateway | Internal `8090` |
 | **MariaDB** | `docker-compose.yml` | Main relational database | Internal `3306` |
 | **Redis** | `docker-compose.yml` | Debounce, preview reservations, metrics cache | Internal `6379` |
 | **RabbitMQ** | `docker-compose.yml` | Notification job queue and management UI | UI `127.0.0.1:7004` |

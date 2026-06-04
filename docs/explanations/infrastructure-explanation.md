@@ -51,16 +51,12 @@ Compose publish app qua Nginx tại `http://localhost:${NGINX_PORT}`. `frontend`
 | `/api/admin/` | `backend:8080` |
 | `/actuator/` | `backend:8080` |
 | `/swagger-ui/`, `/swagger-ui.html`, `/v3/api-docs/` | `backend:8080` |
-| `/api/cameras/` | `worker:8090` |
-| `/api/monitoring/` | `worker:8090` |
-| `/worker/health` | `worker:8090/health` |
-| `/snapshots/` | `minio:9000` |
 
-`/api/cameras/` tắt proxy buffering/cache và tăng timeout để MJPEG stream không bị stall. Nginx dùng Docker DNS resolver `127.0.0.11` với TTL ngắn để tránh lỗi 502 do giữ IP container cũ sau khi `worker`/service bị recreate.
+Route stream `GET /api/v1/cameras/{id}/stream.mjpg` vẫn đi qua backend nhưng có `location` riêng trong Nginx để tắt proxy buffering/cache và tăng timeout, tránh MJPEG stream bị stall. Nginx dùng Docker DNS resolver `127.0.0.11` với TTL ngắn để tránh lỗi 502 do giữ IP container cũ sau khi service bị recreate.
 
-`/snapshots/` chỉ phục vụ browser xem ảnh alert: frontend đổi URL nội bộ `http://minio:9000/snapshots/...` thành same-origin `/snapshots/...`, rồi Nginx proxy tới MinIO API nội bộ. Telegram notification không đi qua route này; backend đọc object bằng MinIO SDK nội bộ và upload bytes lên Telegram.
+Worker và MinIO không còn có public proxy route. Browser gọi backend đã xác thực JWT; backend gọi worker qua `AI_WORKER_BASE_URL=http://worker:8090` và đọc MinIO bằng SDK nội bộ. Alert image được phục vụ qua `GET /api/v1/alerts/{id}/image`; Telegram notification cũng đọc object bằng MinIO SDK nội bộ và upload bytes lên Telegram.
 
-Lưu ý production: Nginx là gateway network, không thay thế auth nghiệp vụ. Backend routes vẫn được Spring Security/JWT bảo vệ. Worker routes `/api/cameras/*` và `/api/monitoring/*` hiện là proxy trực tiếp tới Python worker, chưa có worker-side JWT; trước khi expose public qua domain/tunnel cần harden bằng backend proxy/JWT, Nginx auth/rate-limit hoặc network policy.
+Lưu ý production: Nginx là gateway network, không thay thế auth nghiệp vụ. Backend routes vẫn được Spring Security/JWT bảo vệ. Worker và MinIO nằm trong Docker network nội bộ; nếu cần expose trực tiếp để debug thì chỉ nên bind local hoặc bảo vệ bằng auth/network policy riêng.
 
 ---
 
@@ -95,7 +91,7 @@ Lưu ý production: Nginx là gateway network, không thay thế auth nghiệp v
 Root `.env.example` là superset biến deploy cho tất cả service:
 
 - bind/ports: `APP_BIND_ADDRESS=0.0.0.0` để máy cùng LAN truy cập app qua IP host, `INFRA_BIND_ADDRESS=127.0.0.1` để 5 UI infra chỉ nghe trên máy host, `NGINX_PORT` cho Nginx app entrypoint, infra UI ports `7001–7005`
-- frontend public URLs: `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_AI_WORKER_URL` (để trống để dùng same-origin Nginx)
+- frontend public URL: `NEXT_PUBLIC_API_URL` (để trống để dùng same-origin Nginx)
 - DB/RabbitMQ/MinIO creds; `RABBITMQ_NOTIFICATION_QUEUE_COUNT` quy định số queue shard cho job notification
 - Telegram: `TELEGRAM_ENABLED`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
 - runtime timezone: `TZ` mặc định `ICT-7` (UTC+7, container-safe) để tất cả containers dùng giờ Việt Nam
@@ -166,7 +162,7 @@ docker compose config --quiet
 docker compose up --build -d
 Invoke-WebRequest http://localhost:3000/health -UseBasicParsing
 Invoke-RestMethod http://localhost:3000/actuator/health
-Invoke-RestMethod http://localhost:3000/worker/health
+docker compose exec worker curl -f http://localhost:8090/health
 Invoke-WebRequest http://localhost:7005/-/healthy -UseBasicParsing
 ```
 
@@ -175,7 +171,7 @@ docker compose config --quiet
 docker compose up --build -d
 curl http://localhost:3000/health
 curl http://localhost:3000/actuator/health
-curl http://localhost:3000/worker/health
+docker compose exec worker curl -f http://localhost:8090/health
 curl http://localhost:7005/-/healthy
 ```
 
@@ -203,9 +199,8 @@ Compose hiện tại phục vụ containerization/shadow testing và chưa phả
 - backup/restore policy
 - resource limits/SLO alert policy
 - GPU runtime auto-config
-- auth hardening cho worker routes khi expose public
-- protected/signed snapshot strategy nếu `/snapshots/` cần đưa ra internet
+- auth hardening bổ sung nếu cần expose worker/MinIO trực tiếp cho debug
 
 ---
 
-*Tài liệu phản ánh trạng thái infrastructure tại **Giai đoạn 9**. Runtime chính dùng root `.env` + `docker-compose.yml` full stack; Nginx là app gateway cho frontend/backend/worker/snapshots; Prometheus chạy qua local infra port và backend `/api/admin/metrics`; runtime manager/native dev scripts đã được loại bỏ.*
+*Tài liệu phản ánh trạng thái infrastructure tại **Giai đoạn 9**. Runtime chính dùng root `.env` + `docker-compose.yml` full stack; Nginx là app gateway cho frontend/backend, còn worker và MinIO nằm sau backend gateway nội bộ; Prometheus chạy qua local infra port và backend `/api/admin/metrics`; runtime manager/native dev scripts đã được loại bỏ.*

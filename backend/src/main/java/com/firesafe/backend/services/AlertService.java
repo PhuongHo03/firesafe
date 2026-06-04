@@ -133,6 +133,18 @@ public class AlertService {
         return AlertResponse.from(alert);
     }
 
+    @Transactional(readOnly = true)
+    public byte[] getAlertImage(Long id) {
+        Alert alert = alertRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("Alert not found: " + id));
+        String imageUrl = alert.getImageUrl();
+        if (imageUrl == null || imageUrl.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Alert image not found");
+        }
+        return minioService.readObjectBytesByUrl(imageUrl)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Alert image not found"));
+    }
+
     @Transactional
     public void deleteAlert(Long id) {
         Alert alert = alertRepository.findById(id)

@@ -82,6 +82,17 @@ public class PreviewReservationService {
         return new PreviewReservationsResponse(reservations);
     }
 
+    public boolean hasReservation(String username, Long cameraId) {
+        return Boolean.TRUE.equals(redisTemplate.hasKey(reservationKey(username, cameraId)));
+    }
+
+    public void releaseAllForCamera(Long cameraId) {
+        Set<String> keys = redisTemplate.keys(KEY_PREFIX + "*:" + cameraId);
+        if (keys != null && !keys.isEmpty()) {
+            redisTemplate.delete(keys);
+        }
+    }
+
     private void ensureCameraExists(Long cameraId) {
         if (!cameraRepository.existsById(cameraId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Camera not found: " + cameraId);

@@ -1,6 +1,7 @@
 package com.firesafe.backend.middlewares;
 
 import com.firesafe.backend.utils.JwtUtils;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -22,6 +23,8 @@ import java.io.IOException;
 @Component
 @RequiredArgsConstructor
 public class JwtAuthFilter extends OncePerRequestFilter {
+
+    private static final String TOKEN_COOKIE_NAME = "firesafe_token";
 
     private final JwtUtils jwtUtils;
     private final UserDetailsService userDetailsService;
@@ -54,6 +57,15 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         String bearerToken = request.getHeader("Authorization");
         if (StringUtils.hasText(bearerToken) && bearerToken.startsWith("Bearer ")) {
             return bearerToken.substring(7);
+        }
+        Cookie[] cookies = request.getCookies();
+        if (cookies == null) {
+            return null;
+        }
+        for (Cookie cookie : cookies) {
+            if (TOKEN_COOKIE_NAME.equals(cookie.getName()) && StringUtils.hasText(cookie.getValue())) {
+                return cookie.getValue();
+            }
         }
         return null;
     }

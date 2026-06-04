@@ -44,7 +44,7 @@ AI Worker chạy bằng `src/main.py` (`python -m src.main`) trong Docker contai
 ```
 Trang /cameras
     → frontend kiểm tra detection capacity qua backend /api/v1/detection/capacity trước khi Start Detect
-    → POST AI Worker /api/cameras/start
+    → backend gọi nội bộ AI Worker /api/cameras/start
     → controllers/ai_worker_controller.py nhận request và tạo CameraWorkerConfig
     → services/camera_worker.py mở SharedRtspSource cho mỗi RTSP URL một lần bằng OpenCV/FFmpeg; Hikvision mainstream `.../Streaming/Channels/*01` fail thì thử substream `*02`
     → reader thread cập nhật latest raw frame + frame seq dùng chung
@@ -59,7 +59,7 @@ Trang /cameras
 
 Browser không đọc trực tiếp `rtsp://`, nên AI Worker service bridge RTSP thành MJPEG preview cho frontend.
 
-Batch size là giới hạn tối đa, không phải batch cố định: nếu số camera có frame nhỏ hơn `AI_WORKER_BATCH_MAX_SIZE`, scheduler chạy partial batch sau `AI_WORKER_BATCH_MAX_WAIT_MS`; nếu nhiều camera hơn batch size, scheduler chia nhiều lượt theo round-robin. Preview UI bật/tắt không nằm trong AI Worker; frontend/backend quản lý preview reservation bằng Redis. Khi preview được cấp, browser mới kéo `/api/cameras/{id}/stream.mjpg`; detection nền vẫn chạy độc lập sau Start Detect.
+Batch size là giới hạn tối đa, không phải batch cố định: nếu số camera có frame nhỏ hơn `AI_WORKER_BATCH_MAX_SIZE`, scheduler chạy partial batch sau `AI_WORKER_BATCH_MAX_WAIT_MS`; nếu nhiều camera hơn batch size, scheduler chia nhiều lượt theo round-robin. Preview UI bật/tắt không nằm trong AI Worker; frontend/backend quản lý preview reservation bằng Redis. Khi preview được cấp, browser kéo `/api/v1/cameras/{id}/stream.mjpg`; backend kiểm tra JWT/cookie + reservation rồi proxy stream từ worker nội bộ. Detection nền vẫn chạy độc lập sau Start Detect.
 
 Trang `/cameras/[id]` chỉ cho xem stream lớn khi preview reservation còn active và worker status đang `running + hasFrame + không error`. Trang này không mở detect mới; nó chỉ giữ keepalive preview hiện có và hiển thị alert thuộc camera đó.
 
@@ -106,19 +106,18 @@ cp .env.example .env
 docker compose up --build -d
 ```
 
-Trong Compose, `worker` chạy nội bộ tại `worker:8090`, không publish trực tiếp ra host. Browser gọi qua Nginx:
+Trong Compose, `worker` chạy nội bộ tại `worker:8090`, không publish trực tiếp ra host và không còn public proxy qua Nginx. Browser chỉ gọi backend:
 
 ```text
-http://localhost:<NGINX_PORT>/api/cameras/...
-http://localhost:<NGINX_PORT>/api/monitoring/summary
-http://localhost:<NGINX_PORT>/worker/health
+http://localhost:<NGINX_PORT>/api/v1/cameras/{id}/detection/start
+http://localhost:<NGINX_PORT>/api/v1/cameras/{id}/stream.mjpg
+http://localhost:<NGINX_PORT>/api/admin/worker/monitoring/summary
 ```
 
 Mặc định:
 
 ```text
 http://localhost:3000/cameras
-http://localhost:3000/worker/health
 ```
 
 Worker container tự tải/cache `best.pt` vào Docker volume `ai_worker_models` nếu `/app/models/best.pt` chưa tồn tại. URL tải mặc định lấy từ root `.env` qua `AI_MODEL_URL`; nếu cần Hugging Face private token thì set `HF_TOKEN`.
@@ -187,11 +186,11 @@ AI Worker đọc cấu hình từ process env hoặc CLI args; RTSP mặc địn
 | `/api/cameras/start` | POST | Start worker cho camera; body tối thiểu `{ cameraId, rtspUrl }` |
 | `/api/cameras/stop` | POST | Stop worker theo `cameraId` |
 | `/api/cameras/{id}/status` | GET | Trả trạng thái `{ cameraId, running, error, lastAlertAt, hasFrame }`; cache snapshot ngắn mặc định 1 giây |
-| `/api/cameras/{id}/stream.mjpg` | GET | MJPEG stream cho frontend render bằng `<img>` |
+| `/api/cameras/{id}/stream.mjpg` | GET | MJPEG stream nội bộ; backend proxy ra public route `/api/v1/cameras/{id}/stream.mjpg` sau khi kiểm tra JWT/reservation |
 
 Nếu bấm Start nhiều lần cho cùng camera, service trả status worker đang có và không tạo thêm RTSP session. Nếu nhiều camera dùng cùng `rtspUrl`, service chỉ mở một RTSP capture rồi chia sẻ frame cho các detector/preview tương ứng. Với URL Hikvision dạng `.../Streaming/Channels/*01`, nếu mainstream không mở được thì AI Worker tự thử substream `*02` để tránh giới hạn băng thông/session của thiết bị.
 
-Các endpoint worker hiện được Nginx proxy ra app entrypoint để frontend dùng. Chúng chưa tự verify JWT trong Python service; auth/capacity gate hiện nằm ở frontend/backend trước khi gọi worker. Nếu expose app qua domain/tunnel public, cần harden worker routes bằng backend proxy/JWT, Nginx auth/rate-limit hoặc network policy.
+Các endpoint worker là contract nội bộ giữa backend và Python service, không còn được Nginx proxy public. Python service chưa tự verify JWT; auth/capacity gate nằm ở backend trước khi gọi worker. Nếu expose worker trực tiếp để debug, cần harden bằng auth, bind local hoặc network policy.
 
 ---
 
@@ -218,7 +217,7 @@ Alert payload gửi backend:
 }
 ```
 
-Trong Docker Compose, MinIO API chỉ expose nội bộ Docker. Alert API vẫn lưu URL MinIO nội bộ/presigned; frontend đổi prefix `http://minio:9000` thành đường dẫn same-origin `/snapshots/...` trước khi render ảnh, rồi Nginx proxy `/snapshots/` tới MinIO.
+Trong Docker Compose, MinIO API chỉ expose nội bộ Docker. Alert API vẫn lưu URL MinIO nội bộ/presigned; frontend render ảnh bằng `GET /api/v1/alerts/{id}/image`, backend trích object key từ URL và đọc bytes bằng MinIO SDK nội bộ.
 
 Telegram notification không cần browser truy cập MinIO: backend nhận `imageUrl`, trích object key từ URL, đọc bytes bằng MinIO SDK nội bộ và upload ảnh lên Telegram qua `sendPhoto`. Sau khi Telegram đã nhận ảnh, việc xóa alert/xóa object MinIO chỉ ảnh hưởng UI/storage nội bộ, không làm mất message đã gửi trên Telegram.
 
@@ -247,7 +246,7 @@ Camera phải tồn tại trong DB trước khi bấm Start Detect trên trang `
 - Cooldown tạo alert nằm ở backend Redis reserve: AI Worker hỏi reserve trước, chỉ upload MinIO và POST alert khi Redis cho phép.
 - Alert trùng cùng camera/label trong TTL bị skip trước upload nên không spam MinIO/MariaDB/RabbitMQ/Telegram.
 - `detectedAt` gửi theo giờ local `Asia/Ho_Chi_Minh` để DB/API khớp mốc giờ vận hành tại Việt Nam.
-- Worker routes hiện là runtime endpoints trực tiếp của Python service, chưa có worker-side JWT; production cần đặt sau backend/auth hoặc bảo vệ thêm ở Nginx/network.
+- Worker routes là runtime endpoints trực tiếp của Python service, chưa có worker-side JWT; production đặt sau backend/auth và chỉ expose nội bộ Docker/network.
 - Chưa export ONNX/TensorRT.
 - Chưa benchmark false positive/false negative trên video thực tế.
 

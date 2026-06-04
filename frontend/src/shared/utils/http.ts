@@ -1,6 +1,5 @@
 // Centralized HTTP helpers — empty env means same-origin reverse proxy
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
-const AI_WORKER_URL = process.env.NEXT_PUBLIC_AI_WORKER_URL ?? "";
 const REQUEST_TIMEOUT_MS = 30000;
 
 function errorMessageFromPayload(payload: unknown, fallback: string) {
@@ -36,23 +35,6 @@ export async function request<T>(
   return res.json() as Promise<T>;
 }
 
-export async function requestAI<T>(
-  path: string,
-  options: RequestInit = {}
-): Promise<T> {
-  const signal = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
-  const res = await fetch(`${AI_WORKER_URL}${path}`, {
-    ...options,
-    signal,
-    headers: { "Content-Type": "application/json", ...options.headers },
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => null);
-    throw new Error(errorMessageFromPayload(err, res.statusText || "AI Worker error"));
-  }
-  return res.json() as Promise<T>;
-}
-
-export function getAIWorkerUrl(path: string) {
-  return `${AI_WORKER_URL}${path}`;
+export function getApiUrl(path: string) {
+  return `${BASE_URL}${path}`;
 }

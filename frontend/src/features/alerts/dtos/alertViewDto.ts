@@ -1,4 +1,5 @@
 import { Alert } from "@/features/alerts/types/alert";
+import { getApiUrl } from "@/shared/utils/http";
 
 export function getAlertConfidenceColor(confidence: number) {
   return confidence >= 0.9 ? "var(--accent)" : confidence >= 0.75 ? "var(--yellow)" : "var(--green)";
@@ -16,7 +17,7 @@ export function formatAlertDateTime(value: string) {
   return new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "medium", timeZone: "Asia/Ho_Chi_Minh" }).format(new Date(value));
 }
 
-export function replaceMinIOInternalUrl(url: string | null | undefined): string | null {
-  if (!url) return null;
-  return url.replace(/^http:\/\/minio:9000/, "");
+export function getAlertImageUrl(alert: Alert): string | null {
+  if (!alert.imageUrl) return null;
+  return getApiUrl(`/api/v1/alerts/${alert.id}/image`);
 }
