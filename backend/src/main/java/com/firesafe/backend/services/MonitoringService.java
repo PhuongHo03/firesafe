@@ -3,6 +3,7 @@ package com.firesafe.backend.services;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.firesafe.backend.dtos.AdminMetricsResponse;
+import com.firesafe.backend.models.Alert;
 import com.firesafe.backend.dtos.MonitoringSummaryResponse;
 import com.firesafe.backend.repositories.AlertRepository;
 import com.firesafe.backend.repositories.CameraRepository;
@@ -20,9 +21,11 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -32,6 +35,7 @@ public class MonitoringService {
 
     private static final String ADMIN_METRICS_CACHE_KEY = "admin:metrics:snapshot";
     private static final Duration ADMIN_METRICS_CACHE_TTL = Duration.ofSeconds(10);
+    private static final DateTimeFormatter HOUR_FORMAT = DateTimeFormatter.ofPattern("HH:00");
 
     private final AlertRepository alertRepository;
     private final CameraRepository cameraRepository;
@@ -135,20 +139,6 @@ public class MonitoringService {
         double aiWorkerUp = 0;
         double aiWorkers = 0;
         double aiSources = 0;
-        double nginxUp = 0;
-        double nginxRequestsPerSecond = 0;
-        double nginxActiveConnections = 0;
-        double nginxReadingConnections = 0;
-        double nginxWritingConnections = 0;
-        double nginxWaitingConnections = 0;
-        double nginxAcceptedConnectionsPerSecond = 0;
-        double nginxHandledConnectionsPerSecond = 0;
-        double nginxProbeSuccess = 0;
-        double nginxProbeDurationSeconds = 0;
-        double nginxProbeHttpStatusCode = 0;
-        double frontendProbeSuccess = 0;
-        double frontendProbeDurationSeconds = 0;
-        double frontendProbeHttpStatusCode = 0;
         double redisUp = 0;
         double redisMemory = 0;
         double redisKeys = 0;
@@ -185,20 +175,6 @@ public class MonitoringService {
             aiDetections = queryVector("firesafe_ai_detections_total{job=\"ai-worker\"}");
             aiAlerts = queryVector("firesafe_ai_alerts_sent_total{job=\"ai-worker\"}");
             aiInferenceMs = queryVector("firesafe_ai_inference_ms_avg{job=\"ai-worker\"}");
-            nginxUp = queryValue("up{job=\"nginx\"}");
-            nginxRequestsPerSecond = queryValue("rate(nginx_http_requests_total{job=\"nginx\"}[5m])");
-            nginxActiveConnections = queryValue("nginx_connections_active{job=\"nginx\"}");
-            nginxReadingConnections = queryValue("nginx_connections_reading{job=\"nginx\"}");
-            nginxWritingConnections = queryValue("nginx_connections_writing{job=\"nginx\"}");
-            nginxWaitingConnections = queryValue("nginx_connections_waiting{job=\"nginx\"}");
-            nginxAcceptedConnectionsPerSecond = queryValue("rate(nginx_connections_accepted{job=\"nginx\"}[5m])");
-            nginxHandledConnectionsPerSecond = queryValue("rate(nginx_connections_handled{job=\"nginx\"}[5m])");
-            nginxProbeSuccess = queryValue("probe_success{job=\"blackbox\",instance=\"http://nginx/health\"}");
-            nginxProbeDurationSeconds = queryValue("probe_duration_seconds{job=\"blackbox\",instance=\"http://nginx/health\"}");
-            nginxProbeHttpStatusCode = queryValue("probe_http_status_code{job=\"blackbox\",instance=\"http://nginx/health\"}");
-            frontendProbeSuccess = queryValue("probe_success{job=\"blackbox\",instance=\"http://frontend:3000\"}");
-            frontendProbeDurationSeconds = queryValue("probe_duration_seconds{job=\"blackbox\",instance=\"http://frontend:3000\"}");
-            frontendProbeHttpStatusCode = queryValue("probe_http_status_code{job=\"blackbox\",instance=\"http://frontend:3000\"}");
             redisUp = queryValue("up{job=\"redis\"}");
             redisMemory = queryValue("redis_memory_used_bytes{job=\"redis\"}");
             redisKeys = queryValue("sum(redis_db_keys{job=\"redis\"})");
@@ -225,6 +201,11 @@ public class MonitoringService {
                 aiAlerts,
                 aiInferenceMs
         );
+        List<Alert> recentAlerts = alertRepository.findByDetectedAtAfter(last24h);
+        List<AdminMetricsResponse.LabelCount> alertCountsByLabel = alertRepository.countAlertsByLabel().stream()
+                .map(result -> new AdminMetricsResponse.LabelCount(result.getLabel(), result.getCount()))
+                .toList();
+        List<AdminMetricsResponse.HourCount> alertCountsByHour = buildAlertCountsByHour(now, recentAlerts);
         double cpuPct = nodeUp >= 1 ? clamp((1 - cpuIdle) * 100, 0, 100) : 0;
         double ramUsed = Math.max(0, ramTotal - ramAvailable);
         double diskUsed = Math.max(0, diskTotal - diskAvailable);
@@ -246,29 +227,6 @@ public class MonitoringService {
                         aiCameras,
                         prometheusError
                 ),
-                new AdminMetricsResponse.NginxMetrics(
-                        statusFromUp(nginxUp),
-                        nginxRequestsPerSecond,
-                        nginxActiveConnections,
-                        nginxReadingConnections,
-                        nginxWritingConnections,
-                        nginxWaitingConnections,
-                        nginxAcceptedConnectionsPerSecond,
-                        nginxHandledConnectionsPerSecond,
-                        new AdminMetricsResponse.EndpointProbeMetrics(
-                                statusFromUp(nginxProbeSuccess),
-                                nginxProbeDurationSeconds,
-                                nginxProbeHttpStatusCode,
-                                prometheusError
-                        ),
-                        prometheusError
-                ),
-                new AdminMetricsResponse.EndpointProbeMetrics(
-                        statusFromUp(frontendProbeSuccess),
-                        frontendProbeDurationSeconds,
-                        frontendProbeHttpStatusCode,
-                        prometheusError
-                ),
                 new AdminMetricsResponse.SystemMetrics(
                         cpuPct,
                         ramUsed,
@@ -288,8 +246,8 @@ public class MonitoringService {
                         alertRepository.countByStatus("NEW"),
                         alertRepository.countByDetectedAtAfter(last24h),
                         alertRepository.countByDetectedAtAfterAndConfidenceGreaterThanEqual(last24h, new BigDecimal("0.9000")),
-                        List.of(),
-                        List.of()
+                        alertCountsByLabel,
+                        alertCountsByHour
                 ),
                 new AdminMetricsResponse.CameraMetrics(
                         cameraRepository.count(),
@@ -341,6 +299,22 @@ public class MonitoringService {
         alerts.forEach(result -> ensureCamera(cameras, result).setAlertsSentTotal(result.value()));
         inferenceMs.forEach(result -> ensureCamera(cameras, result).setInferenceMsAvg(result.value()));
         return cameras.values().stream().sorted(Comparator.comparingLong(AdminMetricsResponse.AiCameraMetrics::getCameraId)).toList();
+    }
+
+    private List<AdminMetricsResponse.HourCount> buildAlertCountsByHour(LocalDateTime now, List<Alert> alerts) {
+        Map<String, Long> hourly = new LinkedHashMap<>();
+        for (int i = 23; i >= 0; i--) {
+            hourly.put(now.minusHours(i).format(HOUR_FORMAT), 0L);
+        }
+
+        alerts.forEach(alert -> hourly.computeIfPresent(
+                alert.getDetectedAt().format(HOUR_FORMAT),
+                (hour, count) -> count + 1
+        ));
+
+        return hourly.entrySet().stream()
+                .map(entry -> new AdminMetricsResponse.HourCount(entry.getKey(), entry.getValue()))
+                .toList();
     }
 
     private AdminMetricsResponse.AiCameraMetrics ensureCamera(Map<Long, AdminMetricsResponse.AiCameraMetrics> cameras, PrometheusResult result) {

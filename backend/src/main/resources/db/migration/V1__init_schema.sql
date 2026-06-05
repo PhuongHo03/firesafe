@@ -1,11 +1,6 @@
 -- V1__init_schema.sql
 -- Initial database schema and seed data for FireSafe system
 
-CREATE TABLE roles (
-    id   BIGINT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(50) NOT NULL UNIQUE
-);
-
 CREATE TABLE users (
     id            BIGINT AUTO_INCREMENT PRIMARY KEY,
     username      VARCHAR(100) NOT NULL UNIQUE,
@@ -14,14 +9,6 @@ CREATE TABLE users (
     is_active     BOOLEAN      NOT NULL DEFAULT TRUE,
     created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
-
-CREATE TABLE user_roles (
-    user_id BIGINT NOT NULL,
-    role_id BIGINT NOT NULL,
-    PRIMARY KEY (user_id, role_id),
-    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
-    FOREIGN KEY (role_id) REFERENCES roles (id) ON DELETE CASCADE
 );
 
 CREATE TABLE cameras (
@@ -50,11 +37,5 @@ CREATE INDEX idx_alerts_camera_id    ON alerts (camera_id);
 CREATE INDEX idx_alerts_detected_at  ON alerts (detected_at DESC);
 CREATE INDEX idx_alerts_status       ON alerts (status);
 
-INSERT INTO roles (name) VALUES ('ROLE_ADMIN'), ('ROLE_VIEWER');
-
 INSERT INTO users (username, password_hash, email, is_active)
 VALUES ('Admin', '$2a$12$nbn0upsjYtRlK71imVtw8Osc6wWuWbN4pBhgz9gltW/UkaJYZSkg.', 'admin@nhattienchung.vn', TRUE);
-
-INSERT INTO user_roles (user_id, role_id)
-SELECT u.id, r.id FROM users u, roles r
-WHERE u.email = 'admin@nhattienchung.vn' AND r.name = 'ROLE_ADMIN';

@@ -11,6 +11,7 @@ services:
     expose:
       - "3306"
     volumes:
+      - ./infra/mariadb/mariadb.cnf:/etc/mysql/conf.d/firesafe.cnf:ro
       - mariadb_data:/var/lib/mysql
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
@@ -23,10 +24,14 @@ services:
   redis:
     image: redis:7.4-alpine
     container_name: firesafe-redis
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
     environment:
       TZ: ${TZ:-ICT-7}
     expose:
       - "6379"
+    volumes:
+      - ./infra/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -38,16 +43,17 @@ services:
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
     container_name: firesafe-rabbitmq
-    command: sh -c "rabbitmq-plugins enable --offline rabbitmq_prometheus && rabbitmq-server"
     environment:
       TZ: ${TZ:-ICT-7}
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
     ports:
       - "${INFRA_BIND_ADDRESS:-127.0.0.1}:${RABBITMQ_UI_PORT:-7004}:15672"
     expose:
       - "5672"
       - "15692"
+    volumes:
+      - ./infra/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - ./infra/rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
+      - ./infra/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
       interval: 10s
@@ -98,7 +104,7 @@ services:
       RABBITMQ_PORT: 5672
       RABBITMQ_USER: ${RABBITMQ_USER:-guest}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-guest}
-      RABBITMQ_NOTIFICATION_QUEUE_COUNT: ${RABBITMQ_NOTIFICATION_QUEUE_COUNT:-1}
+      RABBITMQ_NOTIFICATION_QUEUE_COUNT: ${RABBITMQ_NOTIFICATION_QUEUE_COUNT:-2}
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
@@ -110,6 +116,7 @@ services:
       TELEGRAM_ENABLED: ${TELEGRAM_ENABLED:-false}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      ALERT_LIST_CACHE_TTL_SECONDS: ${ALERT_LIST_CACHE_TTL_SECONDS:-10}
       PREVIEW_CPU_THRESHOLD: ${PREVIEW_CPU_THRESHOLD:-80}
       PREVIEW_TTL_SEC: ${PREVIEW_TTL_SEC:-120}
       PREVIEW_KEEPALIVE_SEC: ${PREVIEW_KEEPALIVE_SEC:-30}
@@ -260,28 +267,6 @@ services:
     networks:
       - firesafe-net
 
-  nginx-exporter:
-    image: nginx/nginx-prometheus-exporter:1.5.1
-    container_name: firesafe-nginx-exporter
-    command:
-      - --nginx.scrape-uri=http://nginx/nginx_status
-    expose:
-      - "9113"
-    networks:
-      - firesafe-net
-
-  blackbox-exporter:
-    image: prom/blackbox-exporter:v0.25.0
-    container_name: firesafe-blackbox-exporter
-    command:
-      - --config.file=/etc/blackbox_exporter/blackbox.yml
-    expose:
-      - "9115"
-    volumes:
-      - ./infra/blackbox/blackbox.yml:/etc/blackbox_exporter/blackbox.yml:ro
-    networks:
-      - firesafe-net
-
   frontend:
     build:
       context: ./frontend
@@ -368,6 +353,7 @@ networks:
 volumes:
   mariadb_data:
   minio_data:
+  redis_data:
   redisinsight_data:
   ai_worker_models:
   prometheus_data:

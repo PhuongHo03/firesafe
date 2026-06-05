@@ -2,7 +2,12 @@ export interface AuthResponse {
   token: string;
   username: string;
   email: string;
-  roles: string[];
+}
+
+export interface RegisterResponse {
+  token: string | null;
+  username: string;
+  email: string;
 }
 
 export interface LoginFormState {

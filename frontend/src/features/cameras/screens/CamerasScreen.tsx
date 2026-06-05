@@ -1,9 +1,5 @@
 "use client";
 
-/* eslint-disable react-hooks/set-state-in-effect */
-
-import { useEffect, useState } from "react";
-import { isAdmin } from "@/shared/utils/auth";
 import Sidebar from "@/layouts/Sidebar";
 import CameraForm from "@/features/cameras/components/CameraForm";
 import CameraGrid from "@/features/cameras/components/CameraGrid";
@@ -16,11 +12,6 @@ export default function CamerasScreen() {
   const { cameras, loading, refreshing, error, setError, reload, addCamera, deleteCamera } = useCameras();
   const { showForm, setShowForm, form, saving, updateField, handleAdd } = useCameraForm(addCamera);
   const { detectionStatus, busyCameraId, busyCameraAction, previewCameraIds, loadStatuses, showPreview, hidePreview, startDetection, stopDetection } = useCameraDetection(cameras, setError);
-  const [admin, setAdmin] = useState(false);
-
-  useEffect(() => {
-    setAdmin(isAdmin());
-  }, []);
 
   async function handleRefresh() {
     await reload();
@@ -39,11 +30,9 @@ export default function CamerasScreen() {
             <button id="cameras-refresh-btn" onClick={handleRefresh} style={refreshBtn}>
               <RefreshCw size={14} style={{ animation: refreshing ? "spin 1s linear infinite" : "none" }} /> Làm mới
             </button>
-            {admin && (
-              <button id="add-camera-btn" onClick={() => setShowForm(v => !v)} style={addBtn}>
-                <Plus size={16} /> Thêm Camera
-              </button>
-            )}
+            <button id="add-camera-btn" onClick={() => setShowForm(v => !v)} style={addBtn}>
+              <Plus size={16} /> Thêm Camera
+            </button>
           </div>
         </div>
 
@@ -53,7 +42,6 @@ export default function CamerasScreen() {
         <CameraGrid
           cameras={cameras}
           loading={loading}
-          admin={admin}
           detectionStatus={detectionStatus}
           busyCameraId={busyCameraId}
           busyCameraAction={busyCameraAction}

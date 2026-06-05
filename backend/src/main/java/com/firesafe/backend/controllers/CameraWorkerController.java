@@ -13,7 +13,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -35,7 +34,6 @@ public class CameraWorkerController {
     private final PreviewReservationService previewReservationService;
 
     @PostMapping("/{cameraId}/detection/start")
-    @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Start camera detection through backend gateway")
     public ResponseEntity<CameraDetectionStatusResponse> startDetection(@PathVariable Long cameraId) {
         Camera camera = cameraRepository.findById(cameraId)
@@ -47,7 +45,6 @@ public class CameraWorkerController {
     }
 
     @PostMapping("/{cameraId}/detection/stop")
-    @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Stop camera detection through backend gateway")
     public ResponseEntity<CameraDetectionStatusResponse> stopDetection(@PathVariable Long cameraId) {
         ensureCameraExists(cameraId);
@@ -64,7 +61,6 @@ public class CameraWorkerController {
     }
 
     @GetMapping("/{cameraId}/stream.mjpg")
-    @PreAuthorize("hasAnyRole('ADMIN', 'VIEWER')")
     @Operation(summary = "Stream camera MJPEG after authentication and preview reservation checks")
     public ResponseEntity<StreamingResponseBody> streamCamera(@PathVariable Long cameraId, Authentication authentication) {
         ensureCameraExists(cameraId);

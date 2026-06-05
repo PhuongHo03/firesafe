@@ -5,19 +5,18 @@ import { Alert } from "@/features/alerts/types/alert";
 
 interface AlertsTableProps {
   alerts: Alert[];
-  admin: boolean;
   loading: boolean;
   onOpenAlert: (id: number) => void;
   onDeleteAlert: (id: number) => void;
 }
 
-export default function AlertsTable({ alerts, admin, loading, onOpenAlert, onDeleteAlert }: AlertsTableProps) {
+export default function AlertsTable({ alerts, loading, onOpenAlert, onDeleteAlert }: AlertsTableProps) {
   return (
     <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.75rem", overflow: "hidden" }}>
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead>
           <tr style={{ borderBottom: "1px solid var(--border)" }}>
-            {["ID", "Camera", "Loại", "Độ tin cậy", "Thời gian", "Trạng thái", ...(admin ? ["Xóa"] : [])].map(h => (
+            {["ID", "Camera", "Loại", "Độ tin cậy", "Thời gian", "Trạng thái", "Xóa"].map(h => (
               <th key={h} style={th}>{h}</th>
             ))}
           </tr>
@@ -54,22 +53,20 @@ export default function AlertsTable({ alerts, admin, loading, onOpenAlert, onDel
                   : <span style={{ display: "flex", alignItems: "center", gap: "0.3rem", color: "var(--green)", fontSize: "0.85rem" }}><CheckCircle size={13} /> Đã xử lý</span>
                 }
               </td>
-              {admin && (
-                <td style={td}>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (confirm(`Xóa cảnh báo #${alert.id}?`)) {
-                        onDeleteAlert(alert.id);
-                      }
-                    }}
-                    style={deleteBtn}
-                    title="Xóa cảnh báo"
-                  >
-                    <Trash2 size={14} /> Xóa
-                  </button>
-                </td>
-              )}
+              <td style={td}>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (confirm(`Xóa cảnh báo #${alert.id}?`)) {
+                      onDeleteAlert(alert.id);
+                    }
+                  }}
+                  style={deleteBtn}
+                  title="Xóa cảnh báo"
+                >
+                  <Trash2 size={14} /> Xóa
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>

@@ -140,9 +140,11 @@ export function useCameraDetection(cameras: Camera[], setError: (error: string) 
           const res = await camerasApi.keepAliveCameraPreview(id, token);
           if (!res.reserved) {
             setPreviewCameraIds(prev => hideCameraPreview(prev, id));
+            setError(res.reason ?? "Stream preview đã bị ngắt");
           }
-        } catch {
+        } catch (err: unknown) {
           setPreviewCameraIds(prev => hideCameraPreview(prev, id));
+          setError(err instanceof Error ? err.message : "Stream preview đã bị ngắt");
         }
       }
     }, aliveSec * 1000);

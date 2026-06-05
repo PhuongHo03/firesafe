@@ -5,7 +5,6 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 
 import java.time.LocalDateTime;
-import java.util.List;
 
 @Data
 @AllArgsConstructor
@@ -14,7 +13,6 @@ public class UserResponse {
     private String username;
     private String email;
     private boolean active;
-    private List<String> roles;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -24,7 +22,6 @@ public class UserResponse {
                 user.getUsername(),
                 user.getEmail(),
                 user.isActive(),
-                user.getRoles().stream().map(role -> role.getName()).sorted().toList(),
                 user.getCreatedAt(),
                 user.getUpdatedAt()
         );

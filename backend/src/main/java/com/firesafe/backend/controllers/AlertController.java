@@ -1,6 +1,7 @@
 package com.firesafe.backend.controllers;
 
 import com.firesafe.backend.dtos.AlertRequest;
+import com.firesafe.backend.dtos.AlertPageResponse;
 import com.firesafe.backend.dtos.AlertReservationRequest;
 import com.firesafe.backend.dtos.AlertReservationResponse;
 import com.firesafe.backend.dtos.AlertResponse;
@@ -10,13 +11,11 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -42,7 +41,7 @@ public class AlertController {
 
     @GetMapping
     @Operation(summary = "List all alerts with pagination")
-    public ResponseEntity<Page<AlertResponse>> getAlerts(
+    public ResponseEntity<AlertPageResponse> getAlerts(
             @RequestParam(required = false) Long cameraId,
             @PageableDefault(size = 20, sort = "detectedAt") Pageable pageable) {
         return ResponseEntity.ok(alertService.getAlerts(cameraId, pageable));
@@ -64,16 +63,14 @@ public class AlertController {
     }
 
     @DeleteMapping
-    @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "Delete all alerts (ADMIN only)")
+    @Operation(summary = "Delete all alerts")
     public ResponseEntity<Void> deleteAllAlerts() {
         alertService.deleteAllAlerts();
         return ResponseEntity.noContent().build();
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "Delete an alert (ADMIN only)")
+    @Operation(summary = "Delete an alert")
     public ResponseEntity<Void> deleteAlert(@PathVariable Long id) {
         alertService.deleteAlert(id);
         return ResponseEntity.noContent().build();

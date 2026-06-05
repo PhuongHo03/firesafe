@@ -1,4 +1,4 @@
-import { Activity, AlertTriangle, BarChart3, Camera, Cpu, Database, Gauge, Globe, HardDrive, ListChecks, Network, Server, Timer, Wifi } from "lucide-react";
+import { AlertTriangle, Camera, Cpu, Database, Gauge, HardDrive, ListChecks, Server } from "lucide-react";
 import { formatBytes, formatBytesPair, getStatusColor, percent } from "@/features/dashboard/dtos/dashboardViewDto";
 import { GRID4_STYLE } from "@/features/dashboard/states/dashboardState";
 import { DashboardMetrics } from "@/features/monitoring/types/dashboardMetrics";
@@ -10,8 +10,6 @@ export function DashboardCards({ metrics, alertTotal }: { metrics: DashboardMetr
       <div style={GRID4_STYLE}>
         <SummaryCard icon={<Server size={18} />} label="Backend" value={metrics?.backend.status ?? "..."} color={getStatusColor(metrics?.backend.status)} detail="Actuator scrape" />
         <SummaryCard icon={<Cpu size={18} />} label="AI Worker" value={metrics?.aiWorker.status ?? "..."} color={getStatusColor(metrics?.aiWorker.status)} detail={`${metrics?.aiWorker.sources ?? 0} sources`} />
-        <SummaryCard icon={<Network size={18} />} label="Nginx" value={metrics?.nginx?.probe.status ?? "..."} color={getStatusColor(metrics?.nginx?.probe.status)} detail="HTTP probe" />
-        <SummaryCard icon={<Globe size={18} />} label="Frontend" value={metrics?.frontend?.status ?? "..."} color={getStatusColor(metrics?.frontend?.status)} detail="HTTP probe" />
       </div>
 
       <SectionTitle title="Infra" />
@@ -30,42 +28,12 @@ export function DashboardCards({ metrics, alertTotal }: { metrics: DashboardMetr
         <MetricCard icon={<Cpu size={18} />} label="GPU" value={metrics?.system.gpu.available ? `${metrics.system.gpu.utilPct}%` : "N/A"} percent={metrics?.system.gpu.available ? metrics.system.gpu.utilPct : 0} detail={metrics?.system.gpu.available ? formatBytesPair(metrics.system.gpu.memoryUsedBytes, metrics.system.gpu.memoryTotalBytes) : undefined} />
       </div>
 
-      <SectionTitle title="API and business" />
-      <div style={GRID4_STYLE}>
-        <SummaryCard icon={<Wifi size={18} />} label="API avg latency" value={`${(metrics?.backend.avgLatencyMs ?? 0).toFixed(0)}ms`} />
-        <SummaryCard icon={<AlertTriangle size={18} />} label="API error rate" value={`${((metrics?.backend.errorRate ?? 0) * 100).toFixed(1)}%`} color={(metrics?.backend.errorRate ?? 0) > 0 ? "var(--accent)" : "var(--green)"} />
-        <SummaryCard icon={<BarChart3 size={18} />} label="Requests" value={(metrics?.backend.requestsTotal ?? 0).toFixed(0)} />
-        <SummaryCard icon={<Timer size={18} />} label="Backend uptime" value={formatDuration(metrics?.backend.uptimeSeconds ?? 0)} />
-      </div>
+      <SectionTitle title="Business" />
       <div style={GRID4_STYLE}>
         <SummaryCard icon={<Camera size={18} />} label="Camera active" value={`${metrics?.cameras.active ?? 0}/${metrics?.cameras.total ?? 0}`} />
         <SummaryCard icon={<ListChecks size={18} />} label="Tổng cảnh báo" value={(metrics?.alerts.total ?? alertTotal).toString()} />
         <SummaryCard icon={<AlertTriangle size={18} />} label="Alert mới" value={(metrics?.alerts.newCount ?? 0).toString()} color="var(--accent)" detail={`${metrics?.alerts.last24h ?? 0} trong 24h`} />
-        <SummaryCard icon={<AlertTriangle size={18} />} label="High confidence" value={(metrics?.alerts.highConfidenceLast24h ?? 0).toString()} detail="24h gần nhất" />
-      </div>
-
-      <SectionTitle title="Nginx white-box" />
-      <div style={GRID4_STYLE}>
-        <SummaryCard icon={<Network size={18} />} label="Nginx Export" value={metrics?.nginx?.status ?? "..."} color={getStatusColor(metrics?.nginx?.status)} detail="stub_status scrape" />
-        <SummaryCard icon={<Activity size={18} />} label="Nginx Req/s" value={formatRate(metrics?.nginx?.requestsPerSecond ?? 0)} />
-        <SummaryCard icon={<Network size={18} />} label="Active Conn" value={(metrics?.nginx?.activeConnections ?? 0).toFixed(0)} />
-        <SummaryCard icon={<Network size={18} />} label="Waiting Conn" value={(metrics?.nginx?.waitingConnections ?? 0).toFixed(0)} />
-      </div>
-      <div style={GRID4_STYLE}>
-        <SummaryCard icon={<Network size={18} />} label="Reading" value={(metrics?.nginx?.readingConnections ?? 0).toFixed(0)} />
-        <SummaryCard icon={<Network size={18} />} label="Writing" value={(metrics?.nginx?.writingConnections ?? 0).toFixed(0)} />
-        <SummaryCard icon={<Activity size={18} />} label="Accepted/s" value={formatRate(metrics?.nginx?.acceptedConnectionsPerSecond ?? 0)} />
-        <SummaryCard icon={<Activity size={18} />} label="Handled/s" value={formatRate(metrics?.nginx?.handledConnectionsPerSecond ?? 0)} />
-      </div>
-
-      <SectionTitle title="Black-box endpoints" />
-      <div style={GRID4_STYLE}>
-        <SummaryCard icon={<Network size={18} />} label="Nginx Probe" value={metrics?.nginx?.probe.status ?? "..."} color={getStatusColor(metrics?.nginx?.probe.status)} />
-        <SummaryCard icon={<Timer size={18} />} label="Nginx Latency" value={formatMs(metrics?.nginx?.probe.durationSeconds ?? 0)} />
-        <SummaryCard icon={<Wifi size={18} />} label="Nginx HTTP" value={formatStatusCode(metrics?.nginx?.probe.httpStatusCode ?? 0)} />
-        <SummaryCard icon={<Globe size={18} />} label="Front Probe" value={metrics?.frontend?.status ?? "..."} color={getStatusColor(metrics?.frontend?.status)} />
-        <SummaryCard icon={<Timer size={18} />} label="Front Latency" value={formatMs(metrics?.frontend?.durationSeconds ?? 0)} />
-        <SummaryCard icon={<Wifi size={18} />} label="Front HTTP" value={formatStatusCode(metrics?.frontend?.httpStatusCode ?? 0)} />
+        <SummaryCard icon={<AlertTriangle size={18} />} label="High confidence" value={(metrics?.alerts.highConfidenceLast24h ?? 0).toString()} detail=">= 90% trong 24h" />
       </div>
     </>
   );
@@ -82,25 +50,6 @@ function SummaryCard({ icon, label, value, color, detail }: { icon: React.ReactN
 function MetricCard({ icon, label, value, percent, detail }: { icon: React.ReactNode; label: string; value: string; percent: number; detail?: string }) {
   const safe = Math.max(0, Math.min(100, percent));
   return <div style={cardStyle}><div style={{ display: "flex", alignItems: "center", gap: "0.4rem", color: "var(--text-muted)", fontSize: "0.8rem", marginBottom: "0.75rem" }}>{icon} {label}</div><div style={{ fontSize: "1.5rem", fontWeight: 700 }}>{value}</div>{detail && <div style={{ marginTop: "0.35rem", color: "var(--text-muted)", fontSize: "0.78rem" }}>{detail}</div>}<div style={{ height: 8, background: "var(--surface-2)", borderRadius: 999, overflow: "hidden", marginTop: "0.75rem" }}><div style={{ width: `${safe}%`, height: "100%", background: safe > 85 ? "var(--accent)" : safe > 65 ? "var(--yellow)" : "var(--green)" }} /></div></div>;
-}
-
-function formatRate(value: number) {
-  return `${value.toFixed(value < 10 ? 2 : 1)}/s`;
-}
-
-function formatMs(seconds: number) {
-  return `${(seconds * 1000).toFixed(0)}ms`;
-}
-
-function formatStatusCode(value: number) {
-  return value > 0 ? value.toFixed(0) : "N/A";
-}
-
-function formatDuration(seconds: number) {
-  if (seconds <= 0) return "0m";
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
 }
 
 const cardStyle: React.CSSProperties = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.75rem", padding: "1rem" };

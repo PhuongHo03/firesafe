@@ -1,5 +1,7 @@
 package com.firesafe.backend.services;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.firesafe.backend.dtos.AlertPageResponse;
 import com.firesafe.backend.dtos.AlertRequest;
 import com.firesafe.backend.dtos.AlertReservationRequest;
 import com.firesafe.backend.dtos.AlertReservationResponse;
@@ -26,12 +28,15 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class AlertService {
+
+    private static final String ALERT_LIST_CACHE_PREFIX = "alerts:list:";
 
     private static final DefaultRedisScript<Long> DELETE_DEBOUNCE_IF_MATCHES = new DefaultRedisScript<>(
             "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
@@ -48,9 +53,13 @@ public class AlertService {
     private final StringRedisTemplate redisTemplate;
     private final RabbitTemplate rabbitTemplate;
     private final MinioService minioService;
+    private final ObjectMapper objectMapper;
 
     @Value("${alert.debounce-ttl-seconds:300}")
     private long debounceTtlSeconds;
+
+    @Value("${alert.list-cache-ttl-seconds:10}")
+    private long listCacheTtlSeconds;
 
     @Value("${rabbitmq.exchange:alert.exchange}")
     private String exchange;
@@ -111,6 +120,7 @@ public class AlertService {
             @Override
             public void afterCommit() {
                 log.info("New alert from camera {}, sending notification. Alert ID: {}", camera.getId(), saved.getId());
+                evictAlertListCache();
                 rabbitTemplate.convertAndSend(exchange, notificationRoutingKey(saved.getId()), saved.getId());
             }
         });
@@ -119,11 +129,19 @@ public class AlertService {
     }
 
     @Transactional(readOnly = true)
-    public Page<AlertResponse> getAlerts(Long cameraId, Pageable pageable) {
+    public AlertPageResponse getAlerts(Long cameraId, Pageable pageable) {
+        String cacheKey = getAlertListCacheKey(cameraId, pageable);
+        AlertPageResponse cached = readCachedAlertList(cacheKey);
+        if (cached != null) {
+            return cached;
+        }
+
         Page<Alert> alerts = (cameraId != null)
                 ? alertRepository.findByCameraIdOrderByDetectedAtDesc(cameraId, pageable)
                 : alertRepository.findAllByOrderByDetectedAtDesc(pageable);
-        return alerts.map(AlertResponse::from);
+        AlertPageResponse response = AlertPageResponse.from(alerts.map(AlertResponse::from));
+        writeCachedAlertList(cacheKey, response);
+        return response;
     }
 
     @Transactional(readOnly = true)
@@ -168,8 +186,52 @@ public class AlertService {
             @Override
             public void afterCommit() {
                 cleanupDeletedAlert(cameraId, label, alertId, imageUrl);
+                evictAlertListCache();
             }
         });
+    }
+
+    private AlertPageResponse readCachedAlertList(String cacheKey) {
+        try {
+            String cached = redisTemplate.opsForValue().get(cacheKey);
+            return cached == null ? null : objectMapper.readValue(cached, AlertPageResponse.class);
+        } catch (Exception ex) {
+            log.warn("Failed to read alert list cache {}", cacheKey, ex);
+            return null;
+        }
+    }
+
+    private void writeCachedAlertList(String cacheKey, AlertPageResponse response) {
+        try {
+            redisTemplate.opsForValue().set(
+                    cacheKey,
+                    objectMapper.writeValueAsString(response),
+                    Duration.ofSeconds(listCacheTtlSeconds)
+            );
+        } catch (Exception ex) {
+            log.warn("Failed to write alert list cache {}", cacheKey, ex);
+        }
+    }
+
+    private void evictAlertListCache() {
+        try {
+            Set<String> keys = redisTemplate.keys(ALERT_LIST_CACHE_PREFIX + "*");
+            if (keys != null && !keys.isEmpty()) {
+                redisTemplate.delete(keys);
+            }
+        } catch (Exception ex) {
+            log.warn("Failed to evict alert list cache", ex);
+        }
+    }
+
+    private String getAlertListCacheKey(Long cameraId, Pageable pageable) {
+        String cameraPart = cameraId == null ? "all" : String.valueOf(cameraId);
+        String sortHash = Integer.toHexString(pageable.getSort().toString().hashCode());
+        return ALERT_LIST_CACHE_PREFIX
+                + "camera:" + cameraPart
+                + ":page:" + pageable.getPageNumber()
+                + ":size:" + pageable.getPageSize()
+                + ":sort:" + sortHash;
     }
 
     private void cleanupDeletedAlert(Long cameraId, String label, String alertId, String imageUrl) {

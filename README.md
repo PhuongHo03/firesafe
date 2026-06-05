@@ -30,7 +30,7 @@ FireSafe is an operations-focused monitoring platform for IP cameras. It lets an
 
 | Component | Tech Stack | Current State |
 |---|---|---|
-| **Backend API** | Spring Boot 3.5, Java 21, Spring Security, JPA, Flyway | Implemented: JWT auth, RBAC, camera CRUD, alert ingestion, Redis debounce/reservations, RabbitMQ notification jobs, Telegram photo alerts, MinIO snapshot cleanup, metrics aggregation |
+| **Backend API** | Spring Boot 3.5, Java 21, Spring Security, JPA, Flyway | Implemented: JWT auth, authenticated full-access APIs, camera CRUD, alert ingestion, Redis debounce/reservations/list cache, RabbitMQ notification jobs, Telegram photo alerts, MinIO snapshot cleanup, metrics aggregation |
 | **Frontend UI** | Next.js 16, React 19, TypeScript, CSS variables | Implemented: login/register, dashboard, alerts, alert detail, camera management, preview capacity flow, camera detail stream page, logs/admin users screens |
 | **AI Worker** | Python, OpenCV/FFmpeg, Ultralytics YOLO, PyTorch CPU wheels | Implemented: RTSP shared source reader, Hikvision substream fallback, MJPEG stream endpoint, cross-camera inference scheduler, sustained detection, MinIO upload, backend alert reserve/create |
 | **Offline Debug Tool** | Python, Ultralytics, OpenCV | Implemented: local video/image YOLO debug runner under `video-detect/` |
@@ -49,8 +49,8 @@ flowchart TD
     Frontend -->|JWT API requests| Backend
     Frontend -->|Start/Stop/Status/Stream/Image via backend| Backend
 
-    Backend -->|Users, roles, cameras, alerts| MariaDB[(MariaDB)]
-    Backend -->|Alert debounce, preview reservations, metrics cache| Redis[(Redis)]
+    Backend -->|Users, cameras, alerts| MariaDB[(MariaDB)]
+    Backend -->|Alert debounce, alert list cache, preview reservations, metrics cache| Redis[(Redis)]
     Backend -->|Notification jobs| RabbitMQ[(RabbitMQ)]
     Backend -->|Internal metrics queries| Prometheus[(Prometheus)]
     Backend -->|Internal worker gateway| Worker[AI Worker HTTP Service]
@@ -130,7 +130,7 @@ curl http://localhost:3000/actuator/health
 
 ### 5. Verify Admin Metrics
 
-Prometheus is exposed as a localhost-only admin UI on `http://localhost:7005`. The application dashboard does not call Prometheus directly; it calls the backend admin metrics endpoint with an admin JWT.
+Prometheus is exposed as a localhost-only admin UI on `http://localhost:7005`. The application dashboard does not call Prometheus directly; it calls the backend metrics endpoint with an authenticated JWT.
 
 ```text
 GET http://localhost:3000/api/admin/metrics
@@ -209,10 +209,10 @@ Place model weights under `ai-worker/models/` or pass `--model`.
 | Step | Component | Action |
 |---:|---|---|
 | 1 | Browser UI | User logs in or registers with `@nhattienchung.vn` email |
-| 2 | Backend | Login returns JWT and roles; registration creates inactive `ROLE_VIEWER` account |
-| 3 | Admin UI | Admin activates user and changes role when needed |
+| 2 | Backend | Login returns JWT; registration creates an inactive full-access account pending activation |
+| 3 | Users UI | Authenticated users can activate or disable other accounts |
 | 4 | Frontend | Stores JWT client-side and sends Bearer token for protected APIs |
-| 5 | Spring Security | Applies route and method-level RBAC rules |
+| 5 | Spring Security | Requires JWT authentication for protected APIs |
 
 ### Detection and Preview Capacity
 
@@ -223,7 +223,7 @@ Place model weights under `ai-worker/models/` or pass `--model`.
 | 3 | AI Worker | Starts or reuses shared RTSP source, registers camera in inference scheduler |
 | 4 | `/cameras` page | User clicks `Mở stream` only after detection has a frame |
 | 5 | Backend | Checks preview CPU threshold and creates Redis preview reservation |
-| 6 | Frontend | Renders MJPEG stream and allows navigation to `/cameras/{id}` only while stream reservation is valid |
+| 6 | Frontend | Renders MJPEG stream while reservation is valid; `/cameras/{id}` can open for any camera, but its large stream renders only with an active reservation and worker frame |
 
 ### Real-Time Alert Pipeline
 
@@ -235,7 +235,7 @@ Place model weights under `ai-worker/models/` or pass `--model`.
 | 4 | Camera Worker | Requires sustained detection window before sending alert |
 | 5 | Backend | Reserves Redis debounce slot before snapshot upload |
 | 6 | AI Worker | Uploads annotated PNG snapshot to MinIO and creates alert |
-| 7 | Backend | Saves alert in MariaDB, finalizes debounce, publishes RabbitMQ notification job after commit |
+| 7 | Backend | Saves alert in MariaDB, finalizes debounce, evicts alert list cache, publishes RabbitMQ notification job after commit |
 | 8 | Notification Worker | Sends Telegram `sendPhoto` alert with snapshot bytes read from MinIO |
 
 ### Observability Pipeline
@@ -259,7 +259,7 @@ Place model weights under `ai-worker/models/` or pass `--model`.
 | **Frontend UI** | `frontend/` | Next.js operations dashboard and route screens | Internal `3000` |
 | **AI Worker** | `ai-worker/` | RTSP reader, MJPEG stream, YOLO inference, alert upload/post; internal only behind backend gateway | Internal `8090` |
 | **MariaDB** | `docker-compose.yml` | Main relational database | Internal `3306` |
-| **Redis** | `docker-compose.yml` | Debounce, preview reservations, metrics cache | Internal `6379` |
+| **Redis** | `docker-compose.yml` | Alert debounce, alert list cache, preview reservations, metrics cache | Internal `6379` |
 | **RabbitMQ** | `docker-compose.yml` | Notification job queue and management UI | UI `127.0.0.1:7004` |
 | **MinIO** | `docker-compose.yml` | Snapshot object storage and console UI | Console `127.0.0.1:7002` |
 | **Prometheus** | `infra/prometheus/prometheus.yml` | Metrics collector and query UI | UI `127.0.0.1:7005` |
@@ -318,8 +318,11 @@ Place model weights under `ai-worker/models/` or pass `--model`.
 │   └── explanations/                Architecture and implementation explanations
 │
 ├── infra/
+│   ├── mariadb/                     MariaDB runtime tuning config
 │   ├── nginx/                       Reverse proxy config
-│   └── prometheus/                  Prometheus scrape config
+│   ├── prometheus/                  Prometheus scrape config
+│   ├── rabbitmq/                    RabbitMQ config, plugins, definitions
+│   └── redis/                       Redis persistence/cache policy config
 │
 ├── docker-compose.yml               Full-stack runtime
 ├── .env.example                     Committed environment template
@@ -364,8 +367,9 @@ Default values are for local development only. Override them before any real dep
 - **Single Public App Entry Point**: Browser traffic enters through Nginx on port `3000`. Backend and AI Worker ports are not published directly to the host.
 - **Internal Prometheus Access**: The dashboard calls backend `/api/admin/metrics`; backend queries Prometheus inside the Docker network and caches the normalized snapshot in Redis.
 - **Capacity Gates Are Separate**: Detection capacity checks CPU and GPU if GPU metrics exist; preview capacity checks CPU before opening MJPEG streams on the UI.
-- **Preview Reservation Controls UI Streaming**: A camera can keep detecting without streaming to the browser. The camera detail page only opens when a valid preview reservation and worker frame are available.
+- **Preview Reservation Controls UI Streaming**: A camera can keep detecting without streaming to the browser. Camera detail pages are navigable for every camera, but the large MJPEG stream renders only when that user has a valid preview reservation and the worker has a frame.
 - **Alert Debounce Protects Storage and Notifications**: Backend Redis reservation happens before snapshot upload, so duplicate alert windows skip MinIO, MariaDB, RabbitMQ, and Telegram work.
+- **Alert List Cache Is Short-Lived**: Backend caches `GET /api/v1/alerts` list responses in Redis for a short TTL and evicts `alerts:list:*` after alert create/delete commits.
 - **Telegram Photo Alerts Upload Bytes**: Notification service reads the MinIO object internally and sends it to Telegram through multipart `sendPhoto`, so deleting a local snapshot later does not remove already-sent Telegram media.
 - **Node Metrics Depend on Deployment OS**: On Linux native deployments, node-exporter is configured to read host CPU/RAM/Disk through mounted host paths. On Docker Desktop Windows, it reflects the Docker/WSL2 VM. GPU metrics require a dedicated exporter.
 - **Model Weights Are Runtime Artifacts**: YOLO `.pt` files are downloaded or placed at runtime and are not part of source control.

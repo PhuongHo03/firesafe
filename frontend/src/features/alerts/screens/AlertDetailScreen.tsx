@@ -1,12 +1,8 @@
 "use client";
 
-/* eslint-disable react-hooks/set-state-in-effect */
-
-import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import AlertDetailCard from "@/features/alerts/components/AlertDetailCard";
 import { useAlert } from "@/features/alerts/hooks/useAlert";
-import { isAdmin } from "@/shared/utils/auth";
 import Sidebar from "@/layouts/Sidebar";
 import { ArrowLeft, Flame, Trash2 } from "lucide-react";
 
@@ -15,11 +11,6 @@ export default function AlertDetailScreen() {
   const params = useParams();
   const id = Number(params.id);
   const { alert, loading, error, deleteAlert } = useAlert(id);
-  const [admin, setAdmin] = useState(false);
-
-  useEffect(() => {
-    setAdmin(isAdmin());
-  }, []);
 
   return (
     <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
@@ -49,18 +40,16 @@ export default function AlertDetailScreen() {
               <h1 style={{ margin: 0, fontSize: "1.4rem", fontWeight: 700, display: "flex", alignItems: "center", gap: "0.5rem" }}>
                 <Flame size={20} color="var(--accent)" /> Cảnh báo #{alert.id}
               </h1>
-              {admin && (
-                <button
-                  onClick={() => {
-                    if (confirm(`Xóa cảnh báo #${alert.id}?`)) {
-                      deleteAlert();
-                    }
-                  }}
-                  style={deleteBtn}
-                >
-                  <Trash2 size={14} /> Xóa
-                </button>
-              )}
+              <button
+                onClick={() => {
+                  if (confirm(`Xóa cảnh báo #${alert.id}?`)) {
+                    deleteAlert();
+                  }
+                }}
+                style={deleteBtn}
+              >
+                <Trash2 size={14} /> Xóa
+              </button>
             </div>
 
             <AlertDetailCard alert={alert} />

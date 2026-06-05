@@ -55,6 +55,7 @@ rabbitmq:
 
 alert:
   debounce-ttl-seconds: 300  # 5 minutes
+  list-cache-ttl-seconds: ${ALERT_LIST_CACHE_TTL_SECONDS:10}
 
 preview:
   cpu-threshold: ${PREVIEW_CPU_THRESHOLD:80}

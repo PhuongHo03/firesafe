@@ -23,29 +23,6 @@ export interface DashboardMetrics {
     }>;
     error?: string;
   };
-  nginx?: {
-    status: string;
-    requestsPerSecond: number;
-    activeConnections: number;
-    readingConnections: number;
-    writingConnections: number;
-    waitingConnections: number;
-    acceptedConnectionsPerSecond: number;
-    handledConnectionsPerSecond: number;
-    probe: {
-      status: string;
-      durationSeconds: number;
-      httpStatusCode: number;
-      error?: string;
-    };
-    error?: string;
-  };
-  frontend?: {
-    status: string;
-    durationSeconds: number;
-    httpStatusCode: number;
-    error?: string;
-  };
   system: {
     cpuPct: number;
     ramUsedBytes: number;

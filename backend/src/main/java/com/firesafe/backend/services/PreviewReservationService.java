@@ -1,6 +1,5 @@
 package com.firesafe.backend.services;
 
-import com.firesafe.backend.dtos.AdminMetricsResponse;
 import com.firesafe.backend.dtos.PreviewReservationResponse;
 import com.firesafe.backend.dtos.PreviewReservationsResponse;
 import com.firesafe.backend.repositories.CameraRepository;
@@ -60,6 +59,11 @@ public class PreviewReservationService {
         String key = reservationKey(username, cameraId);
         if (!Boolean.TRUE.equals(redisTemplate.hasKey(key))) {
             return denied(cameraId, "Preview reservation đã hết hạn");
+        }
+        double cpuPct = monitoringService.getCurrentCpuPct();
+        if (cpuPct >= cpuThreshold) {
+            redisTemplate.delete(key);
+            return denied(cameraId, "CPU " + Math.round(cpuPct) + "% quá cao, đã ngắt stream preview");
         }
         redisTemplate.expire(key, Duration.ofSeconds(ttlSeconds));
         return success(cameraId);

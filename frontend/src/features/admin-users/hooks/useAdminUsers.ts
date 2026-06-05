@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getToken, getUser, isAdmin } from "@/shared/utils/auth";
+import { getToken, getUser } from "@/shared/utils/auth";
 import { usersApi } from "@/features/admin-users/api/usersApi";
 import { buildUserUpdateRequest } from "@/features/admin-users/dtos/userUpdateDto";
 import { ADMIN_USERS_MIN_REFRESH_MS, replaceUser, wait } from "@/features/admin-users/states/adminUsersState";
@@ -46,9 +46,6 @@ export function useAdminUsers() {
     if (!currentToken) {
       router.push("/login");
       return;
-    }
-    if (!isAdmin()) {
-      router.push("/");
     }
   }, [router]);
 

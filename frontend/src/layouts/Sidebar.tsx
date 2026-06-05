@@ -6,17 +6,15 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { Flame, LayoutDashboard, Camera, LogOut, ListChecks, Users, ScrollText } from "lucide-react";
-import { clearAuth, getUser, isAdmin } from "@/shared/utils/auth";
+import { clearAuth, getUser } from "@/shared/utils/auth";
 
 export default function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
-  const [user, setUser] = useState<{ username: string; email: string; roles: string[] } | null>(null);
-  const [admin, setAdmin] = useState(false);
+  const [user, setUser] = useState<{ username: string; email: string } | null>(null);
 
   useEffect(() => {
     setUser(getUser());
-    setAdmin(isAdmin());
   }, []);
 
   function logout() {
@@ -24,20 +22,13 @@ export default function Sidebar() {
     router.push("/login");
   }
 
-  const label = user?.roles.includes("ROLE_ADMIN") ? "Admin" : user ? "Viewer" : "";
-
-  const links = admin
-    ? [
-        { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
-        { href: "/admin/users", icon: Users, label: "Users" },
-        { href: "/alerts", icon: ListChecks, label: "Alerts" },
-        { href: "/cameras", icon: Camera, label: "Cameras" },
-        { href: "/logs", icon: ScrollText, label: "Logs" },
-      ]
-    : [
-        { href: "/alerts", icon: ListChecks, label: "Alerts" },
-        { href: "/cameras", icon: Camera, label: "Cameras" },
-      ];
+  const links = [
+    { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
+    { href: "/admin/users", icon: Users, label: "Users" },
+    { href: "/alerts", icon: ListChecks, label: "Alerts" },
+    { href: "/cameras", icon: Camera, label: "Cameras" },
+    { href: "/logs", icon: ScrollText, label: "Logs" },
+  ];
 
   return (
     <aside style={{
@@ -84,7 +75,7 @@ export default function Sidebar() {
       <div style={{ padding: "0 1.25rem", borderTop: "1px solid var(--border)", paddingTop: "1rem" }}>
         <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.75rem" }}>
           <div style={{ color: "var(--text)", fontWeight: 600 }}>{user?.username}</div>
-          <div>{label}</div>
+          <div>{user?.email}</div>
         </div>
         <button id="logout-btn" onClick={logout} style={{
           width: "100%",

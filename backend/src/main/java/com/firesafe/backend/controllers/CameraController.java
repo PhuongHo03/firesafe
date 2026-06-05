@@ -10,7 +10,6 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -37,23 +36,20 @@ public class CameraController {
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "Create a new camera (ADMIN only)")
+    @Operation(summary = "Create a new camera")
     public ResponseEntity<CameraResponse> createCamera(@Valid @RequestBody CameraRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(cameraService.createCamera(request));
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "Update a camera (ADMIN only)")
+    @Operation(summary = "Update a camera")
     public ResponseEntity<CameraResponse> updateCamera(@PathVariable Long id,
                                                        @Valid @RequestBody CameraRequest request) {
         return ResponseEntity.ok(cameraService.updateCamera(id, request));
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
-    @Operation(summary = "Delete a camera (ADMIN only)")
+    @Operation(summary = "Delete a camera")
     public ResponseEntity<Void> deleteCamera(@PathVariable Long id) {
         cameraService.deleteCamera(id);
         return ResponseEntity.noContent().build();

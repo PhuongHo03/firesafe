@@ -4,11 +4,9 @@ import com.firesafe.backend.middlewares.JwtAuthFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
-import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -25,7 +23,6 @@ import java.util.List;
 
 @Configuration
 @EnableWebSecurity
-@EnableMethodSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
 
@@ -63,15 +60,6 @@ public class SecurityConfig {
                 .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                 .requestMatchers("/actuator/prometheus").permitAll()
                 .requestMatchers("/api/v1/metrics/export").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/admin/metrics").hasRole("ADMIN")
-                // Camera management: only ADMIN can create/update/delete
-                .requestMatchers(HttpMethod.GET, "/api/v1/cameras/**").hasAnyRole("ADMIN", "VIEWER")
-                .requestMatchers(HttpMethod.POST, "/api/v1/cameras/*/preview/**").hasAnyRole("ADMIN", "VIEWER")
-                .requestMatchers(HttpMethod.POST, "/api/v1/cameras/**").hasRole("ADMIN")
-                .requestMatchers(HttpMethod.PUT, "/api/v1/cameras/**").hasRole("ADMIN")
-                .requestMatchers(HttpMethod.DELETE, "/api/v1/cameras/**").hasRole("ADMIN")
-                // User management: ADMIN only
-                .requestMatchers("/api/v1/users/**").hasRole("ADMIN")
                 // All other API requests must be authenticated
                 .anyRequest().authenticated()
             )

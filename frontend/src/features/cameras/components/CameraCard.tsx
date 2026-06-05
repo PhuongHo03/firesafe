@@ -6,7 +6,6 @@ import { Camera, CameraDetectionStatus } from "@/features/cameras/types/camera";
 
 interface CameraCardProps {
   camera: Camera;
-  admin: boolean;
   status?: CameraDetectionStatus;
   busy: boolean;
   busyAction: BusyCameraAction;
@@ -18,7 +17,7 @@ interface CameraCardProps {
   onDeleteCamera: (cameraId: number, name: string) => void;
 }
 
-export default function CameraCard({ camera, admin, status, busy, busyAction, previewing, onShowPreview, onHidePreview, onStartDetection, onStopDetection, onDeleteCamera }: CameraCardProps) {
+export default function CameraCard({ camera, status, busy, busyAction, previewing, onShowPreview, onHidePreview, onStartDetection, onStopDetection, onDeleteCamera }: CameraCardProps) {
   const running = Boolean(status?.running);
   const hasError = Boolean(status?.error);
   const hasFrame = Boolean(status?.hasFrame);
@@ -44,9 +43,6 @@ export default function CameraCard({ camera, admin, status, busy, busyAction, pr
         {isDetecting && previewing ? (
           <div style={{ position: "relative", width: "100%", height: "100%" }}>
             <img src={camerasApi.getCameraStreamUrl(camera.id)} alt={`Live ${camera.name}`} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
-            <span style={{ position: "absolute", left: "0.6rem", bottom: "0.6rem", display: "inline-flex", alignItems: "center", gap: "0.35rem", background: "rgba(15,23,42,0.82)", border: "1px solid rgba(148,163,184,0.28)", borderRadius: "0.45rem", padding: "0.35rem 0.55rem", fontSize: "0.75rem", fontWeight: 600 }}>
-              <ExternalLink size={12} /> Chi tiết
-            </span>
             <button type="button" onClick={() => onHidePreview(camera.id)} style={{ position: "absolute", zIndex: 2, top: "0.5rem", right: "0.5rem", ...btnStyle, background: "rgba(15,23,42,0.85)", color: "#fff", padding: "0.35rem 0.75rem" }}>
               Ẩn preview
             </button>
@@ -86,13 +82,9 @@ export default function CameraCard({ camera, admin, status, busy, busyAction, pr
         </span>
       </div>
 
-      <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", wordBreak: "break-all", marginBottom: "0.75rem" }}>
-        {camera.rtspUrl}
-      </div>
-
       <div style={{ position: "relative", zIndex: 2, display: "flex", gap: "0.75rem", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
-          {admin && (showStartButton ? (
+          {showStartButton ? (
             <button id={`start-detect-${camera.id}`} disabled={busy} onClick={() => onStartDetection(camera.id)} style={{ display: "flex", alignItems: "center", gap: "0.35rem", ...btnStyle, background: "var(--accent)", color: "#fff", cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.7 : 1 }}>
               {isStarting ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Play size={13} />} {isStarting ? "Đang bật..." : "Start Detect"}
             </button>
@@ -100,17 +92,15 @@ export default function CameraCard({ camera, admin, status, busy, busyAction, pr
             <button id={`stop-detect-${camera.id}`} disabled={busy} onClick={() => onStopDetection(camera.id)} style={{ display: "flex", alignItems: "center", gap: "0.35rem", ...btnStyle, background: "var(--surface-2)", color: "var(--text)", cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.7 : 1 }}>
               {isStopping ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Square size={13} />} {isStopping ? "Đang dừng..." : "Stop"}
             </button>
-          ))}
+          )}
           <Link href={`/cameras/${camera.id}`} style={detailLinkStyle}>
             <ExternalLink size={13} /> Chi tiết
           </Link>
         </div>
 
-        {admin && (
-          <button id={`delete-cam-${camera.id}`} onClick={() => onDeleteCamera(camera.id, camera.name)} style={{ display: "flex", alignItems: "center", gap: "0.3rem", background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", fontSize: "0.8rem", padding: 0 }}>
-            <Trash2 size={13} /> Xóa
-          </button>
-        )}
+        <button id={`delete-cam-${camera.id}`} onClick={() => onDeleteCamera(camera.id, camera.name)} style={{ display: "flex", alignItems: "center", gap: "0.3rem", background: "transparent", border: "none", color: "var(--accent)", cursor: "pointer", fontSize: "0.8rem", padding: 0 }}>
+          <Trash2 size={13} /> Xóa
+        </button>
       </div>
     </div>
   );

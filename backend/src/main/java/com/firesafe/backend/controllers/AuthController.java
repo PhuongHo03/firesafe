@@ -26,7 +26,7 @@ public class AuthController {
     }
 
     @PostMapping("/register")
-    @Operation(summary = "Register viewer account pending admin activation")
+    @Operation(summary = "Register account pending activation")
     public ResponseEntity<LoginResponse> register(@Valid @RequestBody RegisterRequest request) {
         return ResponseEntity.ok(authService.register(request));
     }

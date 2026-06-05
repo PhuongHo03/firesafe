@@ -22,20 +22,20 @@ backend/
     │   │   ├── configs/                             ← Khai báo Bean & cấu hình Spring
     │   │   │   ├── PresetCameraSeeder.java          ← Seed camera RTSP từ process env/root `.env`
     │   │   │   ├── OpenApiConfig.java               ← Swagger UI + JWT Bearer scheme
-    │   │   │   ├── RabbitMQConfig.java              ← Exchange, Queue, Binding, Converter
-    │   │   │   └── SecurityConfig.java              ← Filter chain, role-based auth rules
+    │   │   │   ├── RabbitMQConfig.java              ← RabbitTemplate, JSON converter, queue name list
+    │   │   │   └── SecurityConfig.java              ← Filter chain, JWT auth rules
     │   │   │
     │   │   ├── controllers/                         ← REST API — nhận request, trả response
     │   │   │   ├── AuthController.java              ← POST /api/v1/auth/login/register
     │   │   │   ├── AlertController.java             ← GET/POST/DELETE /api/v1/alerts
-    │   │   │   ├── AdminMetricsController.java      ← GET /api/admin/metrics (ADMIN only)
+    │   │   │   ├── AdminMetricsController.java      ← GET /api/admin/metrics (authenticated)
     │   │   │   ├── CameraController.java            ← CRUD /api/v1/cameras
     │   │   │   ├── CameraWorkerController.java      ← backend gateway start/stop/status/stream
     │   │   │   ├── CameraPreviewController.java    ← POST /api/v1/cameras/{id}/preview/reserve|keepalive|release, GET /preview/my
     │   │   │   ├── DetectionCapacityController.java← GET /api/v1/detection/capacity
     │   │   │   ├── MetricsExportController.java     ← GET /api/v1/metrics/export
     │   │   │   ├── MonitoringController.java        ← GET /api/v1/monitoring/summary
-    │   │   │   └── UserController.java              ← ADMIN quản lý users
+    │   │   │   └── UserController.java              ← Quản lý users
     │   │   │
     │   │   ├── dtos/                                ← Data Transfer Objects (API contract)
     │   │   │   ├── LoginRequest.java / LoginResponse.java
@@ -50,25 +50,23 @@ backend/
     │   │   │
     │   │   ├── models/                              ← ORM Model — ánh xạ Java class ↔ bảng DB
     │   │   │   ├── User.java                        ← Bảng users
-    │   │   │   ├── Role.java                        ← Bảng roles
     │   │   │   ├── Camera.java                      ← Bảng cameras
     │   │   │   └── Alert.java                       ← Bảng alerts
     │   │   │
     │   │   ├── repositories/                        ← Data Access Layer — giao tiếp với DB
     │   │   │   ├── UserRepository.java              ← Tìm user theo username
-    │   │   │   ├── RoleRepository.java              ← Tìm role hệ thống
     │   │   │   ├── CameraRepository.java            ← CRUD cameras
     │   │   │   └── AlertRepository.java             ← Lưu và query alerts có phân trang
     │   │   │
     │   │   ├── services/                            ← Business Logic + Spring Security user loader
-    │   │   │   ├── AlertService.java                ← Lưu alert + Redis debounce + RabbitMQ publish
+    │   │   │   ├── AlertService.java                ← Lưu alert + Redis debounce/list cache + RabbitMQ publish
     │   │   │   ├── AuthService.java                 ← Login/register + JWT
     │   │   │   ├── CameraService.java               ← CRUD logic cho cameras
     │   │   │   ├── DetectionCapacityService.java    ← CPU/GPU threshold gate cho detection (dynamic)
     │   │   │   ├── MetricsExportService.java        ← Tổng hợp metrics nhẹ cho Prometheus/dashboard
     │   │   │   ├── MonitoringService.java           ← Summary + query Prometheus (CPU/GPU) + Redis cache
     │   │   │   ├── PreviewReservationService.java   ← Redis preview reservation + CPU capacity check
-    │   │   │   ├── UserService.java                 ← ADMIN quản lý user/role
+    │   │   │   ├── UserService.java                 ← Quản lý active user
     │   │   │   ├── UserDetailsServiceImpl.java      ← Load user từ DB cho Spring Security
     │   │   │   ├── MinioService.java                ← Upload ảnh, tạo pre-signed URL
     │   │   │   ├── TelegramNotificationService.java ← Gọi Telegram Bot API
@@ -87,7 +85,7 @@ backend/
     │       │
     │       └── db/
     │           └── migration/                       ← Flyway — tự chạy SQL khi app khởi động
-    │               └── V1__init_schema.sql          ← Tạo 5 bảng + indexes + roles + admin user
+    │               └── V1__init_schema.sql          ← Tạo users/cameras/alerts + indexes + default user
     │
     └── test/
         └── java/com/firesafe/backend/
@@ -183,7 +181,7 @@ HTTP Request đến
 [middlewares/JwtAuthFilter] → Kiểm tra token JWT trong header Authorization
     │
     ▼
-[configs/SecurityConfig]    → Kiểm tra quyền truy cập (role có phù hợp không?)
+[configs/SecurityConfig]    → Kiểm tra JWT và trạng thái đăng nhập
     │
     ▼
 [controllers]              → Nhận request, validate DTO, gọi Service
@@ -267,6 +265,7 @@ spring.datasource.url: jdbc:mariadb://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_
 | `jwt.*` | Secret key và thời gian hết hạn token (24h) |
 | `minio.*` | Endpoint, access key, bucket name |
 | `alert.debounce-ttl-seconds` | Thời gian debounce alert (300s = 5 phút) |
+| `alert.list-cache-ttl-seconds` | TTL cache Redis cho danh sách alerts (`GET /api/v1/alerts`) |
 | `preview.*` | CPU threshold, TTL và keepalive cho quyền xem MJPEG preview trên UI |
 | `detection.*` | CPU/GPU threshold trước khi bật thêm detection |
 | `firesafe.prometheus.base-url` | URL Prometheus nội bộ để backend query metrics cho Dashboard |
@@ -287,14 +286,12 @@ Tạo toàn bộ 5 bảng và các index tối ưu query:
 
 | Bảng | Mục đích |
 |---|---|
-| `roles` | Lưu 2 role: ROLE_ADMIN, ROLE_VIEWER |
 | `users` | Tài khoản người dùng hệ thống |
-| `user_roles` | Bảng trung gian many-to-many User ↔ Role |
 | `cameras` | Thông tin camera IP (RTSP URL, vị trí lắp đặt) |
 | `alerts` | Lịch sử sự kiện phát hiện lửa/khói |
 
 #### `V1__init_schema.sql`
-Tạo schema ban đầu, indexes, roles hệ thống và 1 admin user `admin@nhattienchung.vn` / `admin123` (BCrypt hashed), active sẵn để đăng nhập qua rule domain hiện tại.
+Tạo schema ban đầu, indexes và 1 user mặc định `admin@nhattienchung.vn` / `admin123` (BCrypt hashed), active sẵn để đăng nhập qua rule domain hiện tại.
 
 ---
 
@@ -302,16 +299,8 @@ Tạo schema ban đầu, indexes, roles hệ thống và 1 admin user `admin@nha
 
 **Vai trò:** Mỗi class ánh xạ trực tiếp với một bảng trong database. Hibernate đọc JPA annotation để sinh SQL tương ứng.
 
-#### `Role.java` → bảng `roles`
-Chứa tên role dạng chuỗi. Spring Security yêu cầu prefix `ROLE_`; hệ thống hiện chỉ dùng `ROLE_ADMIN` và `ROLE_VIEWER`.
-
 #### `User.java` → bảng `users`
-```java
-@ManyToMany(fetch = FetchType.EAGER)  // Load roles cùng lúc với user
-@JoinTable(name = "user_roles", ...)
-private Set<Role> roles;
-```
-`EAGER` — cần thiết cho authentication: khi load User phải biết ngay roles của họ.
+Chứa username, email, password hash, trạng thái active và timestamps. User active có đầy đủ quyền trên các API cần đăng nhập.
 
 #### `Camera.java` → bảng `cameras`
 Lưu RTSP URL, tên, vị trí. AI Worker dùng `camera_id` từ bảng này khi gửi alert.
@@ -356,7 +345,7 @@ Page<Alert> findByCameraIdOrderByDetectedAtDesc(Long cameraId, Pageable pageable
 | DTO | Hướng | Nội dung |
 |---|---|---|
 | `LoginRequest` | Client → Server | `{email, password}` |
-| `LoginResponse` | Server → Client | `{token, username, email, roles[]}` |
+| `LoginResponse` | Server → Client | `{token, username, email}` |
 | `RegisterRequest` | Client → Server | `{username, email, password}` — username là tên hiển thị UI |
 | `AlertReservationRequest` | AI Worker → Server | Giữ slot Redis debounce trước khi upload snapshot |
 | `AlertReservationResponse` | Server → AI Worker | `{reserved, reservationToken, ttlSeconds}` để quyết định có upload/tạo alert không |
@@ -387,6 +376,8 @@ Luồng khi AI Worker gửi một alert:
 ```
 
 Redis debounce giờ chặn cùng lúc MinIO/MariaDB/RabbitMQ/Telegram cho alert trùng cùng `cameraId + label` trong TTL. Direct `POST /api/v1/alerts` không có reservation token hợp lệ bị từ chối. Runtime dùng timezone `Asia/Ho_Chi_Minh`, nên `detectedAt`/`createdAt` lưu theo mốc giờ Việt Nam.
+
+Danh sách alerts (`GET /api/v1/alerts?page=&size=&cameraId=`) được cache bằng Redis key prefix `alerts:list:*`, key phân biệt `cameraId`, `page`, `size` và sort hash. TTL mặc định `10s` qua `ALERT_LIST_CACHE_TTL_SECONDS`. Khi tạo alert mới hoặc xóa alert sau commit, backend xóa toàn bộ `alerts:list:*` để trang `/alerts`, dashboard latest alerts và danh sách alert trong `/cameras/[id]` không giữ dữ liệu cũ.
 
 #### `CameraService.java`
 CRUD đơn giản. Mỗi method có `@Transactional` đảm bảo atomicity khi ghi DB.
@@ -422,7 +413,7 @@ Queue "alert.notification.queue" hoặc nhiều queue shard nếu `RABBITMQ_NOTI
 ```
 Chạy **bất đồng bộ** — `AlertService` không cần chờ notification xong mới trả response.
 Retry config đọc từ `application.yml`: `notification.retry.*`
-`RABBITMQ_NOTIFICATION_QUEUE_COUNT` mặc định `1`. Khi tăng lên `N`, backend tạo `N` queue shard và route mỗi alert vào đúng một queue theo `alertId`, nên không gửi trùng Telegram.
+`RABBITMQ_NOTIFICATION_QUEUE_COUNT` là số queue shard backend sẽ listen và route theo `alertId`. Trong Docker local, topology được RabbitMQ load từ `infra/rabbitmq/definitions.json`; vì vậy giá trị này phải khớp số queue shard đã khai báo để không bỏ sót queue. Route mỗi alert vào đúng một queue nên không gửi trùng Telegram.
 
 #### `MonitoringService.java` — Admin Metrics Dashboard
 Backend query internal Prometheus, map normalized metrics và cache Redis snapshot:
@@ -438,7 +429,7 @@ Frontend GET /api/admin/metrics (admin only)
                 → cache Redis TTL 10s
                 → trả AdminMetricsResponse
 ```
-Endpoint `/api/admin/metrics` yêu cầu `ROLE_ADMIN` trong Spring Security. Response shape giống frontend `DashboardMetrics`. Frontend auto-refresh 15s mặc định. Redis cache giúp không spam Prometheus query khi nhiều admin hoặc browser refresh. Prometheus internal URL config qua `firesafe.prometheus.base-url`.
+Endpoint `/api/admin/metrics` yêu cầu JWT hợp lệ trong Spring Security. Response shape giống frontend `DashboardMetrics`. Frontend auto-refresh 15s mặc định. Redis cache giúp không spam Prometheus query khi nhiều browser refresh. Prometheus internal URL config qua `firesafe.prometheus.base-url`.
 
 ---
 
@@ -466,7 +457,7 @@ Nếu token không hợp lệ → request tiếp tục nhưng không có Authent
 loadUserByUsername("admin")
     → UserRepository.findByUsername("admin")
     → convert User model → Spring Security UserDetails
-    → trả về: username, passwordHash, authorities (roles)
+    → trả về: username, passwordHash, trạng thái active
 ```
 
 ---
@@ -480,7 +471,7 @@ loadUserByUsername("admin")
 | Endpoint | Method | Mô tả |
 |---|---|---|
 | `/api/v1/auth/login` | POST | Đăng nhập bằng email `@nhattienchung.vn` + password, trả JWT |
-| `/api/v1/auth/register` | POST | Đăng ký tài khoản viewer pending activation với tên hiển thị tự chọn + email `@nhattienchung.vn`; không trả JWT active |
+| `/api/v1/auth/register` | POST | Đăng ký tài khoản pending activation với tên hiển thị tự chọn + email `@nhattienchung.vn`; không trả JWT |
 
 Luồng login:
 ```text
@@ -488,7 +479,7 @@ LoginRequest(email,password) → AuthService.login()
              → enforce @nhattienchung.vn
              → AuthenticationManager.authenticate()
              → JwtUtils.generateToken()
-             → LoginResponse {token, username, roles}
+             → LoginResponse {token, username, email}
 ```
 
 Luồng register:
@@ -500,9 +491,8 @@ RegisterRequest(username,email,password)
   → reject duplicate email
   → reject duplicate username
   → encode password bằng BCrypt
-  → assign ROLE_VIEWER
   → set isActive=false
-  → Admin kích hoạt trong /api/v1/users trước khi user login được
+  → user chờ được kích hoạt trong /api/v1/users trước khi login được
 ```
 
 #### `AlertController`
@@ -511,52 +501,52 @@ RegisterRequest(username,email,password)
 |---|---|---|
 | `/api/v1/alerts/reservations` | POST | AI Worker reserve Redis debounce slot trước khi upload snapshot |
 | `/api/v1/alerts` | POST | AI Worker gửi alert mới |
-| `/api/v1/alerts?cameraId=1&page=0` | GET | Danh sách alerts (filter + phân trang) |
+| `/api/v1/alerts?cameraId=1&page=0` | GET | Danh sách alerts (filter + phân trang), cache Redis TTL ngắn theo query |
 | `/api/v1/alerts/{id}` | GET | Chi tiết một alert |
 | `/api/v1/alerts/{id}/image` | GET | Trả snapshot PNG qua backend gateway; backend đọc MinIO nội bộ |
-| `/api/v1/alerts` | DELETE | Xóa tất cả alert (ADMIN), cleanup MinIO snapshot và Redis debounce |
-| `/api/v1/alerts/{id}` | DELETE | Xóa một alert (ADMIN), cleanup MinIO snapshot và Redis debounce nếu key còn trỏ tới alert đó |
+| `/api/v1/alerts` | DELETE | Xóa tất cả alert, cleanup MinIO snapshot, Redis debounce và alert list cache |
+| `/api/v1/alerts/{id}` | DELETE | Xóa một alert, cleanup MinIO snapshot, Redis debounce nếu key còn trỏ tới alert đó, và alert list cache |
 
 #### `CameraController`
 
 | Endpoint | Method | Auth | Mô tả |
 |---|---|---|---|
-| `/api/v1/cameras` | GET | Mọi role | Danh sách cameras |
-| `/api/v1/cameras/{id}` | GET | Mọi role | Chi tiết camera |
-| `/api/v1/cameras` | POST | ADMIN | Thêm camera |
-| `/api/v1/cameras/{id}` | PUT | ADMIN | Cập nhật camera |
-| `/api/v1/cameras/{id}` | DELETE | ADMIN | Xóa camera |
+| `/api/v1/cameras` | GET | Token | Danh sách cameras |
+| `/api/v1/cameras/{id}` | GET | Token | Chi tiết camera |
+| `/api/v1/cameras` | POST | Token | Thêm camera |
+| `/api/v1/cameras/{id}` | PUT | Token | Cập nhật camera |
+| `/api/v1/cameras/{id}` | DELETE | Token | Xóa camera |
 
 #### `CameraWorkerController`
 
 | Endpoint | Method | Auth | Mô tả |
 |---|---|---|---|
-| `/api/v1/cameras/{id}/detection/start` | POST | ADMIN | Backend lấy RTSP URL từ DB và gọi worker `/api/cameras/start` nội bộ |
-| `/api/v1/cameras/{id}/detection/stop` | POST | ADMIN | Backend gọi worker `/api/cameras/stop` nội bộ và release preview reservations của camera |
-| `/api/v1/cameras/{id}/detection/status` | GET | ADMIN/VIEWER | Backend gọi worker `/api/cameras/{id}/status` nội bộ |
-| `/api/v1/cameras/{id}/stream.mjpg` | GET | ADMIN/VIEWER + preview reservation | Backend kiểm tra JWT/cookie + Redis reservation rồi proxy MJPEG stream từ worker nội bộ |
+| `/api/v1/cameras/{id}/detection/start` | POST | Token | Backend lấy RTSP URL từ DB và gọi worker `/api/cameras/start` nội bộ |
+| `/api/v1/cameras/{id}/detection/stop` | POST | Token | Backend gọi worker `/api/cameras/stop` nội bộ và release preview reservations của camera |
+| `/api/v1/cameras/{id}/detection/status` | GET | Token | Backend gọi worker `/api/cameras/{id}/status` nội bộ |
+| `/api/v1/cameras/{id}/stream.mjpg` | GET | Token + preview reservation | Backend kiểm tra JWT/cookie + Redis reservation rồi proxy MJPEG stream từ worker nội bộ |
 
 #### `CameraPreviewController`
 
 | Endpoint | Method | Auth | Mô tả |
 |---|---|---|---|
-| `/api/v1/cameras/{id}/preview/reserve` | POST | ADMIN/VIEWER | Kiểm tra CPU threshold và cấp quyền xem stream UI theo Redis TTL |
-| `/api/v1/cameras/{id}/preview/keepalive` | POST | ADMIN/VIEWER | Gia hạn reservation khi card/detail page vẫn đang xem stream |
-| `/api/v1/cameras/{id}/preview/release` | POST | ADMIN/VIEWER | Xóa reservation khi user ẩn preview |
-| `/api/v1/cameras/preview/my` | GET | Mọi role | Liệt kê các preview reservation còn sống của user hiện tại |
+| `/api/v1/cameras/{id}/preview/reserve` | POST | Token | Kiểm tra CPU threshold và cấp quyền xem stream UI theo Redis TTL |
+| `/api/v1/cameras/{id}/preview/keepalive` | POST | Token | Gia hạn reservation khi card/detail page vẫn đang xem stream |
+| `/api/v1/cameras/{id}/preview/release` | POST | Token | Xóa reservation khi user ẩn preview |
+| `/api/v1/cameras/preview/my` | GET | Token | Liệt kê các preview reservation còn sống của user hiện tại |
 
 #### `DetectionCapacityController`
 
 | Endpoint | Method | Auth | Mô tả |
 |---|---|---|---|
-| `/api/v1/detection/capacity` | GET | Mọi role đã đăng nhập | Trả `{allowed, reason}` dựa trên CPU/GPU threshold trước khi frontend gọi backend detection gateway |
+| `/api/v1/detection/capacity` | GET | Token | Trả `{allowed, reason}` dựa trên CPU/GPU threshold trước khi frontend gọi backend detection gateway |
 
 #### `AdminMetricsController`, `MonitoringController`, `MetricsExportController`
 
 | Endpoint | Method | Auth | Mô tả |
 |---|---|---|---|
-| `/api/admin/metrics` | GET | ADMIN | Dashboard metrics đã normalize; backend query Prometheus nội bộ và cache Redis |
-| `/api/admin/worker/monitoring/summary` | GET | ADMIN | Backend gọi AI Worker `/api/monitoring/summary` nội bộ và trả runtime snapshot cho Logs page |
+| `/api/admin/metrics` | GET | Token | Dashboard metrics đã normalize; backend query Prometheus nội bộ và cache Redis |
+| `/api/admin/worker/monitoring/summary` | GET | Token | Backend gọi AI Worker `/api/monitoring/summary` nội bộ và trả runtime snapshot cho Logs page |
 | `/api/v1/monitoring/summary` | GET | Token | Monitoring summary legacy: backend status, alert totals/24h/high-confidence, camera total/active |
 | `/api/v1/metrics/export` | GET | Public | Export business metrics nhẹ cho Prometheus/dashboard migration |
 
@@ -564,8 +554,8 @@ RegisterRequest(username,email,password)
 
 | Endpoint | Method | Auth | Mô tả |
 |---|---|---|---|
-| `/api/v1/users` | GET | ADMIN | List users để kích hoạt/chỉnh role |
-| `/api/v1/users/{id}` | PUT | ADMIN | Update `active` và role (`ROLE_ADMIN` hoặc `ROLE_VIEWER`) |
+| `/api/v1/users` | GET | Token | List users để xem/quản lý trạng thái active |
+| `/api/v1/users/{id}` | PUT | Token | Update `active` |
 
 ---
 
@@ -574,25 +564,23 @@ RegisterRequest(username,email,password)
 #### `SecurityConfig.java`
 Định nghĩa rules bảo mật:
 - `/api/v1/auth/**` gồm login/register, `/swagger-ui/**`, `/v3/api-docs/**`, `/swagger-ui.html`, `/actuator/health`, `/actuator/info`, `/actuator/prometheus` → **PUBLIC**
-- `GET /api/admin/metrics` → chỉ ADMIN
-- `GET /api/v1/cameras/**` → ADMIN hoặc VIEWER
-- `POST /api/v1/cameras/{id}/preview/*` → ADMIN hoặc VIEWER
-- `POST/PUT/DELETE /api/v1/cameras/**` còn lại → Chỉ ADMIN
-- `/api/v1/detection/capacity` → cần token, mọi role đã đăng nhập
+- `GET /api/admin/metrics` → cần token
+- `GET/POST/PUT/DELETE /api/v1/cameras/**` → cần token
+- `POST /api/v1/cameras/{id}/preview/*` → cần token
+- `/api/v1/detection/capacity` → cần token
 - Tất cả còn lại → Cần token
 - Session: `STATELESS` (không dùng session — JWT là stateless)
 - CSRF: disabled (không cần với REST API + JWT)
 - CORS dev/LAN cho `localhost`, `127.0.0.1` và private LAN origins (`192.168.*.*`, `10.*.*.*`, `172.16–31.*.*`) để người dùng cùng mạng truy cập UI qua `http://<IP-máy-host>:3000` vẫn login/register/API được
 
 #### `RabbitMQConfig.java`
-Khai báo topology RabbitMQ:
+Backend cung cấp JSON message converter, `RabbitTemplate` và danh sách queue consumer theo `RABBITMQ_NOTIFICATION_QUEUE_COUNT`. Topology runtime trong Docker được RabbitMQ load từ `infra/rabbitmq/definitions.json`:
 ```
 DirectExchange "alert.exchange"
     └── Queue "alert.notification.queue"      (binding key: "alert.notification")
-    └── Queue "alert.notification.queue.2"    (binding key: "alert.notification.2", nếu queue count >= 2)
-    └── Queue "alert.notification.queue.N"    (binding key: "alert.notification.N", nếu queue count >= N)
+    └── Queue "alert.notification.queue.2"    (binding key: "alert.notification.2")
 ```
-Cấu hình JSON message converter để serialize/deserialize message tự động.
+`RABBITMQ_NOTIFICATION_QUEUE_COUNT` phải khớp số queue shard đã khai báo trong definitions nếu muốn backend consume tất cả queue. Local default template hiện dùng 2 queue shard.
 
 #### `OpenApiConfig.java`
 Cấu hình Swagger UI: tên API, version, thêm ô nhập JWT Bearer token. Sau khi nhập token vào **Authorize**, mọi request từ Swagger UI sẽ tự gắn `Authorization: Bearer <token>`.
@@ -698,4 +686,4 @@ UI không tự mở stream ngay sau Start Detect. Sau khi detection chạy và c
 
 ---
 
-*Tài liệu phản ánh trạng thái backend tại **Giai đoạn 9**. Backend dùng cấu trúc strict layered packages (`controllers/`, `dtos/`, `services/`, `repositories/`, `models/`, `middlewares/`, `configs/`, `utils/`) và đã hỗ trợ login/register viewer-pending-activation với email `@nhattienchung.vn`, RBAC `ADMIN/VIEWER`, admin user activation/role editing, preset RTSP camera từ env, alert ingestion từ AI Worker bằng Redis reservation/debounce, cleanup MinIO khi xóa alert, RabbitMQ notification, Telegram photo notification qua MinIO SDK, preview/detection capacity gates, admin dashboard metrics qua Prometheus nội bộ + Redis cache và Dockerfile cho Compose full stack.*
+*Tài liệu phản ánh trạng thái backend tại **Giai đoạn 9**. Backend dùng cấu trúc strict layered packages (`controllers/`, `dtos/`, `services/`, `repositories/`, `models/`, `middlewares/`, `configs/`, `utils/`) và đã hỗ trợ login/register pending activation với email `@nhattienchung.vn`, JWT auth không phân quyền, quản lý active user, preset RTSP camera từ env, alert ingestion từ AI Worker bằng Redis reservation/debounce, cleanup MinIO khi xóa alert, RabbitMQ notification, Telegram photo notification qua MinIO SDK, preview/detection capacity gates, dashboard metrics qua Prometheus nội bộ + Redis cache và Dockerfile cho Compose full stack.*

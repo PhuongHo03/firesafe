@@ -1,0 +1,81 @@
+{
+  "users": [
+    {
+      "name": "guest",
+      "password_hash": "1KrWxzzkGBu1GS0Q2WdUNal9tzeX9rosP6H4sUIE4+gSUkmF",
+      "hashing_algorithm": "rabbit_password_hashing_sha256",
+      "tags": ["administrator"]
+    }
+  ],
+  "vhosts": [
+    {
+      "name": "/"
+    }
+  ],
+  "permissions": [
+    {
+      "user": "guest",
+      "vhost": "/",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    }
+  ],
+  "exchanges": [
+    {
+      "name": "alert.exchange",
+      "vhost": "/",
+      "type": "direct",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    }
+  ],
+  "queues": [
+    {
+      "name": "alert.notification.queue",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "alert.notification.queue.2",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    }
+  ],
+  "bindings": [
+    {
+      "source": "alert.exchange",
+      "vhost": "/",
+      "destination": "alert.notification.queue",
+      "destination_type": "queue",
+      "routing_key": "alert.notification",
+      "arguments": {}
+    },
+    {
+      "source": "alert.exchange",
+      "vhost": "/",
+      "destination": "alert.notification.queue.2",
+      "destination_type": "queue",
+      "routing_key": "alert.notification.2",
+      "arguments": {}
+    }
+  ],
+  "policies": [
+    {
+      "name": "firesafe-alert-retention",
+      "vhost": "/",
+      "pattern": "^alert\\.notification\\.queue(\\.[0-9]+)?$",
+      "apply-to": "queues",
+      "definition": {
+        "message-ttl": 604800000
+      },
+      "priority": 0
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 import { request } from "@/shared/utils/http";
-import { AuthResponse } from "@/features/auth/types/auth";
+import { AuthResponse, RegisterResponse } from "@/features/auth/types/auth";
 
 export const authApi = {
   login(email: string, password: string) {
@@ -10,7 +10,7 @@ export const authApi = {
   },
 
   register(username: string, email: string, password: string) {
-    return request<AuthResponse>(
+    return request<RegisterResponse>(
       "/api/v1/auth/register",
       { method: "POST", body: JSON.stringify({ username, email, password }) }
     );

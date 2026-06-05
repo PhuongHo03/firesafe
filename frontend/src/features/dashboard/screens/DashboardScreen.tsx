@@ -41,7 +41,7 @@ export default function DashboardScreen() {
 
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "1.5rem", marginBottom: "1.5rem" }}>
           <ChartCard title="Alerts theo giờ" subtitle="24 giờ gần nhất" data={hourlyChartData(metrics)} />
-          <ChartCard title="Alerts theo loại" subtitle="fire / smoke" data={labelChartData(metrics)} />
+          <ChartCard title="Alerts theo loại" subtitle="Theo nhãn phát hiện" data={labelChartData(metrics)} />
         </div>
 
         <AiWorkerRuntimeTable metrics={metrics} loading={monitoring.loading} />

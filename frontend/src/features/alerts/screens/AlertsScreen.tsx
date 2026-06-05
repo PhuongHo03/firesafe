@@ -1,27 +1,18 @@
 "use client";
 
-/* eslint-disable react-hooks/set-state-in-effect */
-
-import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Sidebar from "@/layouts/Sidebar";
 import AlertsPagination from "@/features/alerts/components/AlertsPagination";
 import AlertsTable from "@/features/alerts/components/AlertsTable";
 import { useAlerts } from "@/features/alerts/hooks/useAlerts";
-import { isAdmin } from "@/shared/utils/auth";
 import { RefreshCw, Trash2 } from "lucide-react";
 
 export default function AlertsScreen() {
   const router = useRouter();
-  const [admin, setAdmin] = useState(false);
   const {
     alerts, total, page, setPage, totalPages,
     loading, error, refreshing, reload, deleteAlert, deleteAllAlerts
   } = useAlerts();
-
-  useEffect(() => {
-    setAdmin(isAdmin());
-  }, []);
 
   return (
     <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
@@ -39,20 +30,18 @@ export default function AlertsScreen() {
               <RefreshCw size={14} style={{ animation: refreshing ? "spin 1s linear infinite" : "none" }} />
               Làm mới
             </button>
-            {admin && (
-              <button
-                id="delete-all-alerts-btn"
-                disabled={total === 0}
-                onClick={() => {
-                  if (confirm("Xóa tất cả cảnh báo?")) {
-                    deleteAllAlerts();
-                  }
-                }}
-                style={{ ...deleteBtn, opacity: total === 0 ? 0.5 : 1, cursor: total === 0 ? "not-allowed" : "pointer" }}
-              >
-                <Trash2 size={14} /> Xóa tất cả
-              </button>
-            )}
+            <button
+              id="delete-all-alerts-btn"
+              disabled={total === 0}
+              onClick={() => {
+                if (confirm("Xóa tất cả cảnh báo?")) {
+                  deleteAllAlerts();
+                }
+              }}
+              style={{ ...deleteBtn, opacity: total === 0 ? 0.5 : 1, cursor: total === 0 ? "not-allowed" : "pointer" }}
+            >
+              <Trash2 size={14} /> Xóa tất cả
+            </button>
           </div>
         </div>
 
@@ -62,7 +51,7 @@ export default function AlertsScreen() {
           </div>
         )}
 
-        <AlertsTable alerts={alerts} admin={admin} loading={loading} onOpenAlert={id => router.push(`/alerts/${id}`)} onDeleteAlert={deleteAlert} />
+        <AlertsTable alerts={alerts} loading={loading} onOpenAlert={id => router.push(`/alerts/${id}`)} onDeleteAlert={deleteAlert} />
         <AlertsPagination page={page} totalPages={totalPages} onPageChange={setPage} />
       </main>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>

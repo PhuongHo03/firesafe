@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/admin")
 @RequiredArgsConstructor
-@Tag(name = "Admin Metrics", description = "Admin-only runtime metrics APIs")
+@Tag(name = "Admin Metrics", description = "Authenticated runtime metrics APIs")
 public class AdminMetricsController {
 
     private final MonitoringService monitoringService;

@@ -123,8 +123,8 @@ Prefix `NEXT_PUBLIC_` bắt buộc để biến được expose ra phía client 
 Các method chính theo feature:
 
 ```ts
-authApi.login(username, password)              // → { token, username, roles }
-authApi.register(username, email, password)    // → AuthResponse
+authApi.login(username, password)              // → { token, username, email }
+authApi.register(username, email, password)    // → { token: null, username, email }
 alertsApi.getAlerts(page, size, token, cameraId?) // → { content: Alert[], totalElements, totalPages }
 alertsApi.getAlert(id, token)                  // → Alert
 alertsApi.deleteAlert(id, token)               // → void
@@ -194,11 +194,10 @@ interface PreviewReservation {
 Lưu JWT và thông tin user vào cookie bằng `js-cookie`. Đây là client-side cookie để frontend đọc được token khi gọi API:
 
 ```ts
-saveAuth({ token, username, roles })  // Lưu vào cookie, expires: 1 ngày
+saveAuth({ token, username, email })  // Lưu vào cookie, expires: 1 ngày
 getToken()                            // Lấy token hiện tại
-getUser()                             // Lấy { username, roles }
+getUser()                             // Lấy { username, email }
 clearAuth()                           // Xóa cookie khi logout
-isAdmin()                             // Kiểm tra có ROLE_ADMIN không
 ```
 
 ---
@@ -225,8 +224,8 @@ Ví dụ: `app/cameras/page.tsx` → `features/cameras/screens/CamerasScreen.tsx
 
 Navigation sidebar dùng chung cho tất cả trang (trừ Login). Hiển thị:
 - Logo + brand name
-- Admin thấy Dashboard, Users, Alerts, Cameras, Logs; Viewer chỉ thấy Alerts và Cameras
-- Username + role của người đang đăng nhập (`Admin` hoặc `Viewer`)
+- Mọi user đã đăng nhập thấy Dashboard, Users, Alerts, Cameras, Logs
+- Username + email của người đang đăng nhập
 - Nút Đăng xuất (xóa cookie → redirect `/login`)
 
 ---
@@ -241,19 +240,17 @@ Navigation sidebar dùng chung cho tất cả trang (trừ Login). Hiển thị:
 - Có link sang `/register`
 - Hiển thị lỗi nếu sai credentials
 
-### `/register` — Đăng ký viewer
+### `/register` — Đăng ký tài khoản
 
 - Form: tên tài khoản hiển thị, email, password, xác nhận password
 - Client validate email phải kết thúc bằng `@nhattienchung.vn`
 - Client validate password xác nhận khớp
-- Gọi `POST /api/v1/auth/register` → tạo tài khoản `ROLE_VIEWER` ở trạng thái pending; email/tên tài khoản không được trùng
-- Không auto-login vì tài khoản chưa active; ở lại trang đăng ký và hiển thị thông báo chờ Ban quản trị kích hoạt
-- Admin phải vào `/admin/users` kích hoạt trước khi user login được
-- Không có chọn role khi đăng ký
+- Gọi `POST /api/v1/auth/register` → tạo tài khoản pending activation; email/tên tài khoản không được trùng
+- Không auto-login vì tài khoản chưa active; hiển thị thông báo chờ kích hoạt
 
 ### `/` — Home redirect
 
-Route `/` redirect sang `/cameras` để Viewer đăng nhập xong vào thẳng trang được phép xem. Dashboard chuyển sang `/dashboard`.
+Route `/` redirect sang `/cameras`; Dashboard ở `/dashboard`.
 
 ### `/dashboard` — Dashboard
 
@@ -276,7 +273,7 @@ Hiển thị danh sách alert đầy đủ với phân trang, auto-refresh, clic
 
 ### `/admin/users` — Quản lý người dùng
 
-Chỉ Admin truy cập được. Trang này hiển thị danh sách tài khoản, bật/tắt active và chỉnh role giữa `ROLE_ADMIN` / `ROLE_VIEWER`. Tài khoản mới đăng ký mặc định là Viewer pending; Admin phải active thì user mới đăng nhập được.
+Mọi user đã đăng nhập truy cập được. Trang này hiển thị danh sách tài khoản và bật/tắt active; không còn chỉnh nhóm quyền.
 
 ### `/alerts/[id]` — Chi tiết Alert
 
@@ -284,28 +281,29 @@ Hiển thị:
 - Ảnh snapshot từ MinIO (nếu có); frontend render `GET /api/v1/alerts/{id}/image`, backend đọc MinIO nội bộ và trả ảnh sau khi JWT hợp lệ
 - Tên camera, loại cảnh báo, độ tin cậy, thời gian, trạng thái
 - Link URL ảnh gốc để truy cập trực tiếp
-- Nút "Xóa" chỉ hiện với Admin để xóa alert hiện tại rồi quay về `/alerts`
+- Nút "Xóa" hiện với mọi user đã đăng nhập để xóa alert hiện tại rồi quay về `/alerts`
 
 ### `/cameras` — Quản lý Camera
 
 | Quyền | Tính năng |
 |---|---|
 | Mọi user | Xem danh sách camera (card grid) |
-| Mọi user | Xem trạng thái detect từ AI Worker |
-| ADMIN | Start/Stop Detect cho từng camera qua AI Worker |
-| Mọi user | Mở/ẩn stream UI qua preview reservation |
-| ADMIN | Nút "Thêm Camera" — form thêm mới |
-| ADMIN | Nút "Xóa" trên từng card |
+| Mọi user đã đăng nhập | Xem trạng thái detect từ AI Worker |
+| Mọi user đã đăng nhập | Xem RTSP URL trên card camera |
+| Mọi user đã đăng nhập | Start/Stop Detect cho từng camera qua AI Worker |
+| Mọi user đã đăng nhập | Mở/ẩn stream UI qua preview reservation |
+| Mọi user đã đăng nhập | Nút "Thêm Camera" — form thêm mới |
+| Mọi user đã đăng nhập | Nút "Xóa" trên từng card |
 
 Form thêm camera yêu cầu: Tên, Vị trí, RTSP URL.
 
 Flow detection + preview:
 
-1. Admin bấm **Start Detect** → frontend kiểm tra detection capacity (`GET /api/v1/detection/capacity`): CPU < `DETECTION_CPU_THRESHOLD`, GPU < `DETECTION_GPU_THRESHOLD`
+1. User bấm **Start Detect** → frontend kiểm tra detection capacity (`GET /api/v1/detection/capacity`): CPU < `DETECTION_CPU_THRESHOLD`, GPU < `DETECTION_GPU_THRESHOLD`
 2. Nếu capacity pass → gọi backend `/api/v1/cameras/{id}/detection/start`; backend lấy RTSP URL từ DB và gọi worker nội bộ. Worker chờ RTSP connect + first frame tối đa 8s rồi trả về status thực tế (`running`, `hasFrame`, `error`).
 3. Nếu RTSP fail → UI hiện **"khối lỗi"** + nút Stop. Worker không chạy detection.
 4. Nếu RTSP OK + có frame → card hiện nút **Mở stream** cho mọi user đã đăng nhập thay vì tự render MJPEG.
-5. Bấm **Mở stream** → backend kiểm tra preview capacity (`POST /api/v1/cameras/{id}/preview/reserve`): CPU < `PREVIEW_CPU_THRESHOLD`. Request preview này pass với ADMIN/VIEWER, nhưng vẫn bị chặn nếu hệ thống quá tải.
+5. Bấm **Mở stream** → backend kiểm tra preview capacity (`POST /api/v1/cameras/{id}/preview/reserve`): CPU < `PREVIEW_CPU_THRESHOLD`. Request preview này chỉ cần JWT hợp lệ, nhưng vẫn bị chặn nếu hệ thống quá tải.
 6. Preview pass → card render MJPEG và gửi keepalive định kỳ. Preview fail → UI hiện lý do từ backend, detection vẫn chạy.
 
 Camera có 4 trạng thái: Chưa detect → Đang kết nối → Lỗi → Đang detect (+ stream hoặc quá tải). Nếu đang chạy OK rồi RTSP đứt → worker tự reconnect (exponential backoff 5s→30s), detection tạm dừng rồi tự resume.
@@ -371,4 +369,4 @@ CSS Variables được định nghĩa trong `globals.css`:
 
 ---
 
-*Tài liệu phản ánh trạng thái frontend tại **Giai đoạn 9**. Frontend dùng cấu trúc feature-based (`src/app` route mỏng → `src/features/*/screens` → hooks/API/types theo feature), có login/register viewer-pending-activation (`@nhattienchung.vn`), `/admin/users` để Admin kích hoạt/chỉnh role, `/` redirect sang `/cameras`, Dashboard tổng quan gọi backend `/api/admin/metrics` để nhận Prometheus/business metrics đã normalize, trang `/alerts` quản lý danh sách/xóa alert theo quyền và render snapshot qua backend image gateway, trang `/cameras` tích hợp Worker RTSP detect + preview reservation qua backend gateway, Viewer chỉ thấy Alerts/Cameras ở sidebar nhưng vẫn xem được preview nếu reserve pass, trang `/cameras/[id]` xem stream lớn khi reservation còn sống, trang `/logs` hiển thị AI Worker runtime monitoring snapshot dạng cards/table, và có Dockerfile để build bằng root `.env`/Compose; WebSocket real-time sẽ bổ sung sau nếu cần.*
+*Tài liệu phản ánh trạng thái frontend tại **Giai đoạn 9**. Frontend dùng cấu trúc feature-based (`src/app` route mỏng → `src/features/*/screens` → hooks/API/types theo feature), có login/register pending activation (`@nhattienchung.vn`), `/admin/users` để quản lý active user, `/` redirect sang `/cameras`, Dashboard tổng quan gọi backend `/api/admin/metrics` để nhận Prometheus/business metrics đã normalize, trang `/alerts` quản lý danh sách/xóa alert và render snapshot qua backend image gateway, trang `/cameras` tích hợp Worker RTSP detect + preview reservation qua backend gateway, sidebar hiển thị đầy đủ Dashboard/Users/Alerts/Cameras/Logs cho user đã đăng nhập, trang `/cameras/[id]` xem stream lớn khi reservation còn sống, trang `/logs` hiển thị AI Worker runtime monitoring snapshot dạng cards/table, và có Dockerfile để build bằng root `.env`/Compose; WebSocket real-time sẽ bổ sung sau nếu cần.*

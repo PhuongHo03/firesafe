@@ -75,7 +75,7 @@ Lưu ý production: Nginx là gateway network, không thay thế auth nghiệp v
 | `prometheus` | `prom/prometheus` | `7005` | Scrape/store metrics + Prometheus UI/API |
 | `mariadb` | `mariadb:11.4` | internal `3306` | DB chính |
 | `minio` API | `minio/minio` | internal `9000` | Snapshot object storage |
-| `redis` | `redis:7.4-alpine` | internal `6379` | Debounce/cache |
+| `redis` | `redis:7.4-alpine` | internal `6379` | Alert debounce, alert list cache, preview reservations, metrics cache |
 | `rabbitmq` AMQP | `rabbitmq:3.13-management-alpine` | internal `5672` | Queue |
 | `rabbitmq` Prometheus | `rabbitmq:3.13-management-alpine` | internal `15692` | RabbitMQ metrics endpoint |
 | `redis-exporter` | `oliver006/redis_exporter` | internal `9121` | Redis metrics cho Prometheus |
@@ -93,6 +93,7 @@ Root `.env.example` là superset biến deploy cho tất cả service:
 - bind/ports: `APP_BIND_ADDRESS=0.0.0.0` để máy cùng LAN truy cập app qua IP host, `INFRA_BIND_ADDRESS=127.0.0.1` để 5 UI infra chỉ nghe trên máy host, `NGINX_PORT` cho Nginx app entrypoint, infra UI ports `7001–7005`
 - frontend public URL: `NEXT_PUBLIC_API_URL` (để trống để dùng same-origin Nginx)
 - DB/RabbitMQ/MinIO creds; `RABBITMQ_NOTIFICATION_QUEUE_COUNT` quy định số queue shard cho job notification
+- Redis/cache: `ALERT_LIST_CACHE_TTL_SECONDS` quy định TTL cache danh sách alerts; Redis runtime config nằm ở `infra/redis/redis.conf`
 - Telegram: `TELEGRAM_ENABLED`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
 - runtime timezone: `TZ` mặc định `ICT-7` (UTC+7, container-safe) để tất cả containers dùng giờ Việt Nam
 - backend auth: `JWT_SECRET`, `FIRESAFE_USERNAME`, `FIRESAFE_PASSWORD`
@@ -146,12 +147,23 @@ Node-exporter chạy trong container với `pid: host` và mount `/proc`, `/sys`
 volumes:
   mariadb_data:        # DB data
   minio_data:          # Snapshot object storage
+  redis_data:          # Redis AOF/data
   redisinsight_data:   # RedisInsight config
   ai_worker_models:    # Hugging Face best.pt cache
   prometheus_data:     # Prometheus TSDB retention 7 ngày
 ```
 
 Data tồn tại sau restart/container recreate; mất khi chạy `docker compose down -v`.
+
+Runtime config files mounted into infra containers:
+
+| File | Mounted into | Mục đích |
+|---|---|---|
+| `infra/mariadb/mariadb.cnf` | MariaDB `/etc/mysql/conf.d/firesafe.cnf` | UTF8MB4, strict SQL mode, InnoDB sizing, slow query log |
+| `infra/redis/redis.conf` | Redis `/usr/local/etc/redis/redis.conf` | AOF persistence, `/data`, `maxmemory 256mb`, `allkeys-lru` |
+| `infra/rabbitmq/rabbitmq.conf` | RabbitMQ `/etc/rabbitmq/rabbitmq.conf` | Management/Prometheus ports, definitions import, resource limits |
+| `infra/rabbitmq/definitions.json` | RabbitMQ `/etc/rabbitmq/definitions.json` | `alert.exchange`, notification queues/bindings, message TTL policy |
+| `infra/rabbitmq/enabled_plugins` | RabbitMQ `/etc/rabbitmq/enabled_plugins` | Enable management + Prometheus plugins |
 
 ---
 

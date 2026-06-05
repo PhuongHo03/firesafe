@@ -18,7 +18,7 @@ export default function AdminUsersScreen() {
               <Users size={22} /> Quản lý người dùng
             </h1>
             <p style={{ margin: "0.25rem 0 0", color: "var(--text-muted)", fontSize: "0.875rem" }}>
-              Kích hoạt tài khoản và chỉnh role Admin/Viewer
+              Kích hoạt hoặc vô hiệu hóa tài khoản
             </p>
           </div>
           <button onClick={reload} style={refreshBtn}>

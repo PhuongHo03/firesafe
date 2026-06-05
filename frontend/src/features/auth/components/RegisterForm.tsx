@@ -37,7 +37,7 @@ export default function RegisterForm({ form, error, success, loading, onFieldCha
           <input id="confirm-password" type="password" value={form.confirmPassword} onChange={e => onFieldChange("confirmPassword", e.target.value)} required minLength={6} autoComplete="new-password" style={inputStyle} placeholder="••••••••" />
         </div>
 
-        {success && <AuthMessage tone="success">Đăng ký tài khoản thành công! Vui lòng chờ Ban quản trị kích hoạt tài khoản của bạn trước khi đăng nhập.</AuthMessage>}
+        {success && <AuthMessage tone="success">Đăng ký tài khoản thành công! Vui lòng chờ tài khoản được kích hoạt trước khi đăng nhập.</AuthMessage>}
         {error && <AuthMessage>{error}</AuthMessage>}
 
         <button id="register-submit" type="submit" disabled={loading} style={submitBtn(loading)}>

@@ -14,8 +14,6 @@ public class AdminMetricsResponse {
     private Instant generatedAt;
     private BackendMetrics backend;
     private AiWorkerMetrics aiWorker;
-    private NginxMetrics nginx;
-    private EndpointProbeMetrics frontend;
     private SystemMetrics system;
     private InfraMetrics infra;
     private AlertMetrics alerts;
@@ -52,30 +50,6 @@ public class AdminMetricsResponse {
         private Double detectionsTotal;
         private Double alertsSentTotal;
         private Double inferenceMsAvg;
-    }
-
-    @Data
-    @AllArgsConstructor
-    public static class NginxMetrics {
-        private String status;
-        private double requestsPerSecond;
-        private double activeConnections;
-        private double readingConnections;
-        private double writingConnections;
-        private double waitingConnections;
-        private double acceptedConnectionsPerSecond;
-        private double handledConnectionsPerSecond;
-        private EndpointProbeMetrics probe;
-        private String error;
-    }
-
-    @Data
-    @AllArgsConstructor
-    public static class EndpointProbeMetrics {
-        private String status;
-        private double durationSeconds;
-        private double httpStatusCode;
-        private String error;
     }
 
     @Data
