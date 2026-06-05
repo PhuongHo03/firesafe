@@ -6,16 +6,20 @@ import com.firesafe.backend.models.Camera;
 import com.firesafe.backend.repositories.CameraRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class CameraService {
 
     private final CameraRepository cameraRepository;
+    private final WorkerClient workerClient;
+    private final PreviewReservationService previewReservationService;
 
     @Transactional(readOnly = true)
     public List<CameraResponse> getAllCameras() {
@@ -57,6 +61,13 @@ public class CameraService {
         if (!cameraRepository.existsById(id)) {
             throw new EntityNotFoundException("Camera not found: " + id);
         }
+        // Stop AI detection worker and release preview reservations before deleting
+        try {
+            workerClient.stopCamera(id);
+        } catch (Exception e) {
+            log.debug("Worker stop on delete for camera {}: {}", id, e.getMessage());
+        }
+        previewReservationService.releaseAllForCamera(id);
         cameraRepository.deleteById(id);
     }
 }

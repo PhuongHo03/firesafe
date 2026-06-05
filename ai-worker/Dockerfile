@@ -11,9 +11,9 @@ RUN pip install --no-cache-dir --timeout 120 --retries 5 -r requirements.txt
 
 COPY src ./src
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
-RUN chmod +x ./docker-entrypoint.sh
+RUN sed -i 's/\r$//' ./docker-entrypoint.sh && chmod +x ./docker-entrypoint.sh
 
-ENV AI_MODEL_URL=https://huggingface.co/TommyNgx/YOLOv10-Fire-and-Smoke-Detection/resolve/main/best.pt
+ENV AI_MODEL_URL=""
 ENV AI_MODEL_PATH=/app/models/best.pt
 
 EXPOSE 8090

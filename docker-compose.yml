@@ -168,8 +168,8 @@ services:
       AI_WORKER_BATCH_MAX_SIZE: ${AI_WORKER_BATCH_MAX_SIZE:-1}
       AI_WORKER_BATCH_MAX_WAIT_MS: ${AI_WORKER_BATCH_MAX_WAIT_MS:-50}
       AI_WORKER_SCHEDULER_IDLE_SLEEP_MS: ${AI_WORKER_SCHEDULER_IDLE_SLEEP_MS:-5}
-      AI_MODEL_URL: ${AI_MODEL_URL:-https://huggingface.co/TommyNgx/YOLOv10-Fire-and-Smoke-Detection/resolve/main/best.pt}
-      AI_MODEL_PATH: ${AI_MODEL_PATH:-/app/models/best.pt}
+      AI_MODEL_URL: ${AI_MODEL_URL}
+      AI_MODEL_PATH: ${AI_MODEL_PATH}
       HF_TOKEN: ${HF_TOKEN:-}
     expose:
       - "8090"
