@@ -41,6 +41,13 @@ public class CameraPreviewController {
         return ResponseEntity.ok(previewReservationService.release(authentication.getName(), cameraId));
     }
 
+    @PostMapping("/preview/release-all")
+    @Operation(summary = "Release all camera preview reservations for the current user")
+    public ResponseEntity<Void> releaseAll(Authentication authentication) {
+        previewReservationService.releaseAllForUser(authentication.getName());
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/preview/my")
     @Operation(summary = "List current user's active preview reservations")
     public ResponseEntity<PreviewReservationsResponse> listMine(Authentication authentication) {

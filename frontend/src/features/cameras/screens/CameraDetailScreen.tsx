@@ -111,13 +111,27 @@ export default function CameraDetailScreen() {
             <ArrowLeft size={16} /> Quay lại
           </button>
 
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem", marginBottom: "1rem" }}>
-            <h1 style={{ margin: 0, fontSize: "1.35rem", fontWeight: 700, display: "flex", alignItems: "center", gap: "0.5rem" }}>
-              <CameraIcon size={21} color="var(--accent)" /> {camera?.name ?? "Chi tiết camera"}
-            </h1>
-            <span style={{ ...statusPill, color: streamAllowed ? "var(--green)" : "var(--text-muted)" }}>
-              <Radio size={14} /> {streamAllowed ? "Live stream" : "No stream"}
-            </span>
+          <div style={streamHeader}>
+            <div style={headerMetric}>
+              <div style={headerMetricLabel}>
+                <CameraIcon size={16} color="var(--accent)" /> Hãng camera
+              </div>
+              <div style={headerMetricValue}>{camera?.name ?? "Chi tiết camera"}</div>
+            </div>
+            <div style={headerMetric}>
+              <div style={headerMetricLabel}>
+                <MapPin size={16} color="var(--yellow)" /> Location
+              </div>
+              <div style={headerMetricValue}>{camera?.location || "Không xác định"}</div>
+            </div>
+            <div style={headerMetric}>
+              <div style={headerMetricLabel}>
+                <Radio size={16} color={streamAllowed ? "var(--green)" : "var(--text-muted)"} /> Stream
+              </div>
+              <div style={{ ...headerMetricValue, color: streamAllowed ? "var(--green)" : "var(--text-muted)" }}>
+                {streamAllowed ? "Live stream" : "No stream"}
+              </div>
+            </div>
           </div>
 
           {loading ? (
@@ -135,56 +149,47 @@ export default function CameraDetailScreen() {
                 )}
               </section>
 
-              <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "1rem", marginTop: "1rem" }}>
-                <div style={infoPanel}>
-                  <div style={infoItem}>
-                    <CameraIcon size={18} color="var(--accent)" />
-                    <div>
-                      <div style={labelText}>Hãng camera</div>
-                      <div style={valueText}>{camera?.name ?? "-"}</div>
-                    </div>
-                  </div>
-                  <div style={infoItem}>
-                    <MapPin size={18} color="var(--yellow)" />
-                    <div>
-                      <div style={labelText}>Location</div>
-                      <div style={valueText}>{camera?.location || "Không xác định"}</div>
-                    </div>
-                  </div>
-                  <div style={infoItem}>
-                    <Bell size={18} color="var(--green)" />
-                    <div>
-                      <div style={labelText}>Total alerts</div>
-                      <div style={valueText}>{totalAlerts}</div>
-                    </div>
-                  </div>
-                </div>
-
+              <section style={{ marginTop: "1rem" }}>
                 <div style={alertsPanel}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem", marginBottom: "0.75rem" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.45rem", fontWeight: 700 }}>
-                      <Bell size={17} color="var(--accent)" /> Alerts
+                  <div style={alertsHeader}>
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontWeight: 750, fontSize: "1.05rem" }}>
+                        <Bell size={18} color="var(--accent)" /> Alerts
+                      </div>
+                      <div style={{ color: "var(--text-muted)", fontSize: "0.82rem", marginTop: "0.25rem" }}>
+                        Alert gần nhất của camera này
+                      </div>
                     </div>
-                    <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>{alerts.length}/{totalAlerts}</span>
+                    <span style={totalAlertsPill}>Total alerts: {totalAlerts}</span>
                   </div>
-                  <select
-                    disabled={alerts.length === 0}
-                    defaultValue=""
-                    onChange={event => goToAlert(event.target.value)}
-                    style={alertSelect}
-                  >
-                    <option value="">{alerts.length === 0 ? "Chưa có alert" : "Chọn alert để xem chi tiết"}</option>
-                    {alerts.map(alert => (
-                      <option key={alert.id} value={alert.id}>
-                        #{alert.id} - {alert.label.toUpperCase()} - {Math.round(Number(alert.confidence) * 100)}% - {formatDate(alert.detectedAt)}
-                      </option>
-                    ))}
-                  </select>
+
+                  <div style={alertsControlRow}>
+                    <select
+                      disabled={alerts.length === 0}
+                      defaultValue=""
+                      onChange={event => goToAlert(event.target.value)}
+                      style={alertSelect}
+                    >
+                      <option value="">{alerts.length === 0 ? "Chưa có alert" : "Chọn alert để xem chi tiết"}</option>
+                      {alerts.map(alert => (
+                        <option key={alert.id} value={alert.id}>
+                          #{alert.id} - {alert.label.toUpperCase()} - {Math.round(Number(alert.confidence) * 100)}% - {formatDate(alert.detectedAt)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
                   <div style={alertListBox}>
-                    {alerts.map(alert => (
+                    {alerts.length === 0 ? (
+                      <div style={emptyAlerts}>Camera này chưa có alert nào</div>
+                    ) : alerts.map(alert => (
                       <button key={alert.id} onClick={() => router.push(`/alerts/${alert.id}`)} style={alertRow}>
-                        <span>#{alert.id} {alert.label.toUpperCase()}</span>
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem", color: "var(--text-muted)" }}>
+                        <span style={{ display: "flex", alignItems: "center", gap: "0.65rem", minWidth: 0 }}>
+                          <span style={alertIdBadge}>#{alert.id}</span>
+                          <span style={{ fontWeight: 750 }}>{alert.label.toUpperCase()}</span>
+                          <span style={{ color: "var(--text-muted)" }}>{Math.round(Number(alert.confidence) * 100)}%</span>
+                        </span>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem", color: "var(--text-muted)", whiteSpace: "nowrap" }}>
                           {formatDate(alert.detectedAt)} <ExternalLink size={12} />
                         </span>
                       </button>
@@ -228,21 +233,50 @@ const streamShell: React.CSSProperties = {
   borderRadius: "0.7rem",
   aspectRatio: "16 / 9",
   minHeight: "360px",
-  maxHeight: "calc(100vh - 260px)",
+  maxHeight: "calc(100vh - 220px)",
   overflow: "hidden",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
 };
 
-const infoPanel: React.CSSProperties = {
+const streamHeader: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+  gap: "1rem",
+  marginBottom: "1rem",
+};
+
+const headerMetric: React.CSSProperties = {
+  minWidth: 0,
+  minHeight: "76px",
   background: "var(--surface)",
   border: "1px solid var(--border)",
   borderRadius: "0.7rem",
-  padding: "1rem",
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-  gap: "0.9rem",
+  padding: "0.85rem 1rem",
+  display: "flex",
+  flexDirection: "column",
+  justifyContent: "center",
+};
+
+const headerMetricLabel: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.45rem",
+  color: "var(--text-muted)",
+  fontSize: "0.8rem",
+  fontWeight: 700,
+  marginBottom: "0.35rem",
+};
+
+const headerMetricValue: React.CSSProperties = {
+  color: "var(--text)",
+  fontSize: "1.15rem",
+  fontWeight: 750,
+  lineHeight: 1.2,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
 };
 
 const alertsPanel: React.CSSProperties = {
@@ -253,39 +287,25 @@ const alertsPanel: React.CSSProperties = {
   minWidth: 0,
 };
 
-const infoItem: React.CSSProperties = {
-  minWidth: 0,
-  background: "var(--surface-2)",
-  border: "1px solid var(--border)",
-  borderRadius: "0.55rem",
-  padding: "0.85rem",
+const alertsHeader: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: "0.75rem",
+  justifyContent: "space-between",
+  gap: "1rem",
+  marginBottom: "0.9rem",
+  flexWrap: "wrap",
 };
 
-const labelText: React.CSSProperties = {
-  color: "var(--text-muted)",
-  fontSize: "0.78rem",
-  marginBottom: "0.25rem",
-};
-
-const valueText: React.CSSProperties = {
-  color: "var(--text)",
-  fontSize: "0.95rem",
-  fontWeight: 700,
-  wordBreak: "break-word",
-};
-
-const statusPill: React.CSSProperties = {
+const totalAlertsPill: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
-  gap: "0.4rem",
-  background: "var(--surface)",
+  minHeight: "32px",
+  background: "var(--surface-2)",
   border: "1px solid var(--border)",
   borderRadius: "999px",
-  padding: "0.45rem 0.8rem",
-  fontSize: "0.82rem",
+  color: "var(--text)",
+  padding: "0.35rem 0.75rem",
+  fontSize: "0.86rem",
   fontWeight: 700,
 };
 
@@ -300,8 +320,14 @@ const alertSelect: React.CSSProperties = {
   outline: "none",
 };
 
+const alertsControlRow: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr)",
+  gap: "0.75rem",
+};
+
 const alertListBox: React.CSSProperties = {
-  height: "150px",
+  maxHeight: "260px",
   marginTop: "0.75rem",
   overflowY: "auto",
   border: "1px solid var(--border)",
@@ -309,19 +335,35 @@ const alertListBox: React.CSSProperties = {
   background: "#10131d",
 };
 
+const emptyAlerts: React.CSSProperties = {
+  minHeight: "88px",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  color: "var(--text-muted)",
+  fontSize: "0.9rem",
+};
+
+const alertIdBadge: React.CSSProperties = {
+  flex: "0 0 auto",
+  minWidth: "3rem",
+  color: "var(--text)",
+  fontWeight: 750,
+};
+
 const alertRow: React.CSSProperties = {
   width: "100%",
-  minHeight: "44px",
+  minHeight: "50px",
   border: "none",
   borderBottom: "1px solid var(--border)",
   background: "transparent",
   color: "var(--text)",
   cursor: "pointer",
-  padding: "0.6rem 0.75rem",
+  padding: "0.7rem 0.85rem",
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
   gap: "0.75rem",
-  fontSize: "0.82rem",
+  fontSize: "0.88rem",
   textAlign: "left",
 };

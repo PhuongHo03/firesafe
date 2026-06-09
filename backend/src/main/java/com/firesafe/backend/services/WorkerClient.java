@@ -17,11 +17,13 @@ import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.BooleanSupplier;
 
 @Slf4j
 @Service
@@ -80,16 +82,23 @@ public class WorkerClient {
         }
     }
 
-    public void streamCamera(Long cameraId, OutputStream outputStream) {
+    public void streamCamera(Long cameraId, OutputStream outputStream, BooleanSupplier keepStreaming) {
         try {
             restTemplate.execute(
                     uri("/api/cameras/" + cameraId + "/stream.mjpg"),
                     HttpMethod.GET,
                     null,
                     response -> {
-                        Objects.requireNonNull(response.getBody(), "Worker stream response has no body")
-                                .transferTo(outputStream);
-                        outputStream.flush();
+                        InputStream inputStream = Objects.requireNonNull(response.getBody(), "Worker stream response has no body");
+                        byte[] buffer = new byte[8192];
+                        int read;
+                        while (keepStreaming.getAsBoolean() && (read = inputStream.read(buffer)) != -1) {
+                            if (!keepStreaming.getAsBoolean()) {
+                                break;
+                            }
+                            outputStream.write(buffer, 0, read);
+                            outputStream.flush();
+                        }
                         return null;
                     }
             );

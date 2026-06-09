@@ -15,6 +15,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class UserService {
     private final UserRepository userRepository;
+    private final PreviewReservationService previewReservationService;
 
     @Transactional(readOnly = true)
     public List<UserResponse> getUsers() {
@@ -32,6 +33,9 @@ public class UserService {
                 throw new IllegalArgumentException("Không thể tự vô hiệu hóa tài khoản của chính mình");
             }
             user.setActive(request.getActive());
+            if (!request.getActive()) {
+                previewReservationService.releaseAllForUser(user.getEmail());
+            }
         }
         return UserResponse.from(userRepository.save(user));
     }

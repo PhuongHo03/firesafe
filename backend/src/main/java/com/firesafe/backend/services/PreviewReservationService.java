@@ -3,6 +3,7 @@ package com.firesafe.backend.services;
 import com.firesafe.backend.dtos.PreviewReservationResponse;
 import com.firesafe.backend.dtos.PreviewReservationsResponse;
 import com.firesafe.backend.repositories.CameraRepository;
+import com.firesafe.backend.repositories.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -25,6 +26,7 @@ public class PreviewReservationService {
 
     private final StringRedisTemplate redisTemplate;
     private final CameraRepository cameraRepository;
+    private final UserRepository userRepository;
     private final MonitoringService monitoringService;
 
     @Value("${preview.cpu-threshold:80}")
@@ -75,6 +77,13 @@ public class PreviewReservationService {
         return new PreviewReservationResponse(false, cameraId, 0, keepaliveSeconds, null);
     }
 
+    public void releaseAllForUser(String username) {
+        Set<String> keys = redisTemplate.keys(KEY_PREFIX + username + ":*");
+        if (keys != null && !keys.isEmpty()) {
+            redisTemplate.delete(keys);
+        }
+    }
+
     public PreviewReservationsResponse listMine(String username) {
         Set<String> keys = redisTemplate.keys(KEY_PREFIX + username + ":*");
         List<PreviewReservationResponse> reservations = keys == null ? List.of() : keys.stream()
@@ -88,6 +97,13 @@ public class PreviewReservationService {
 
     public boolean hasReservation(String username, Long cameraId) {
         return Boolean.TRUE.equals(redisTemplate.hasKey(reservationKey(username, cameraId)));
+    }
+
+    public boolean hasActiveReservation(String username, Long cameraId) {
+        return hasReservation(username, cameraId)
+                && userRepository.findByEmail(username)
+                        .map(user -> user.isActive())
+                        .orElse(false);
     }
 
     public void releaseAllForCamera(Long cameraId) {

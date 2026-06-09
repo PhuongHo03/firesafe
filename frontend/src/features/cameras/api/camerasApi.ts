@@ -76,6 +76,13 @@ export const camerasApi = {
     });
   },
 
+  releaseAllCameraPreviews(token: string) {
+    return request<void>("/api/v1/cameras/preview/release-all", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  },
+
   getMyPreviewReservations(token: string) {
     return request<PreviewReservationsResponse>("/api/v1/cameras/preview/my", {
       headers: { Authorization: `Bearer ${token}` },

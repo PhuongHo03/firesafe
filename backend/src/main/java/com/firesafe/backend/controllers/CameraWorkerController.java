@@ -22,6 +22,10 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BooleanSupplier;
+
 @RestController
 @RequestMapping("/api/v1/cameras")
 @RequiredArgsConstructor
@@ -64,14 +68,30 @@ public class CameraWorkerController {
     @Operation(summary = "Stream camera MJPEG after authentication and preview reservation checks")
     public ResponseEntity<StreamingResponseBody> streamCamera(@PathVariable Long cameraId, Authentication authentication) {
         ensureCameraExists(cameraId);
-        if (!previewReservationService.hasReservation(authentication.getName(), cameraId)) {
+        String username = authentication.getName();
+        if (!previewReservationService.hasActiveReservation(username, cameraId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Preview reservation is missing or expired");
         }
-        StreamingResponseBody body = outputStream -> workerClient.streamCamera(cameraId, outputStream);
+        StreamingResponseBody body = outputStream -> workerClient.streamCamera(cameraId, outputStream, previewAccessChecker(username, cameraId));
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType("multipart/x-mixed-replace; boundary=frame"))
                 .header("Cache-Control", "no-cache")
                 .body(body);
+    }
+
+    private BooleanSupplier previewAccessChecker(String username, Long cameraId) {
+        AtomicLong lastCheckedAt = new AtomicLong(0);
+        AtomicBoolean allowed = new AtomicBoolean(true);
+        return () -> {
+            long now = System.currentTimeMillis();
+            if (now - lastCheckedAt.get() < 1000) {
+                return allowed.get();
+            }
+            lastCheckedAt.set(now);
+            boolean stillAllowed = previewReservationService.hasActiveReservation(username, cameraId);
+            allowed.set(stillAllowed);
+            return stillAllowed;
+        };
     }
 
     private void ensureCameraExists(Long cameraId) {

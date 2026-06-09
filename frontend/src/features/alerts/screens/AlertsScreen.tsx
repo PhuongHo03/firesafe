@@ -4,8 +4,9 @@ import { useRouter } from "next/navigation";
 import Sidebar from "@/layouts/Sidebar";
 import AlertsPagination from "@/features/alerts/components/AlertsPagination";
 import AlertsTable from "@/features/alerts/components/AlertsTable";
+import DeleteButton from "@/features/alerts/components/DeleteButton";
 import { useAlerts } from "@/features/alerts/hooks/useAlerts";
-import { RefreshCw, Trash2 } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 
 export default function AlertsScreen() {
   const router = useRouter();
@@ -30,7 +31,7 @@ export default function AlertsScreen() {
               <RefreshCw size={14} style={{ animation: refreshing ? "spin 1s linear infinite" : "none" }} />
               Làm mới
             </button>
-            <button
+            <DeleteButton
               id="delete-all-alerts-btn"
               disabled={total === 0}
               onClick={() => {
@@ -38,10 +39,9 @@ export default function AlertsScreen() {
                   deleteAllAlerts();
                 }
               }}
-              style={{ ...deleteBtn, opacity: total === 0 ? 0.5 : 1, cursor: total === 0 ? "not-allowed" : "pointer" }}
             >
-              <Trash2 size={14} /> Xóa tất cả
-            </button>
+              Xóa tất cả
+            </DeleteButton>
           </div>
         </div>
 
@@ -60,4 +60,3 @@ export default function AlertsScreen() {
 }
 
 const refreshBtn: React.CSSProperties = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.5rem", padding: "0.5rem 1rem", color: "var(--text-muted)", cursor: "pointer", display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.875rem" };
-const deleteBtn: React.CSSProperties = { background: "var(--accent-dim)", border: "1px solid var(--accent)", borderRadius: "0.4rem", color: "var(--accent)", cursor: "pointer", display: "flex", alignItems: "center", gap: "0.35rem", padding: "0.35rem 0.6rem", fontSize: "0.8rem" };

@@ -6,7 +6,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { Flame, LayoutDashboard, Camera, LogOut, ListChecks, Users, ScrollText } from "lucide-react";
-import { clearAuth, getUser } from "@/shared/utils/auth";
+import { camerasApi } from "@/features/cameras/api/camerasApi";
+import { clearAuth, getToken, getUser } from "@/shared/utils/auth";
 
 export default function Sidebar() {
   const router = useRouter();
@@ -18,6 +19,10 @@ export default function Sidebar() {
   }, []);
 
   function logout() {
+    const token = getToken();
+    if (token) {
+      void camerasApi.releaseAllCameraPreviews(token).catch(() => undefined);
+    }
     clearAuth();
     router.push("/login");
   }

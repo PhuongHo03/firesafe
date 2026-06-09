@@ -1,5 +1,6 @@
-import { AlertTriangle, CheckCircle, Trash2 } from "lucide-react";
+import { AlertTriangle, CheckCircle } from "lucide-react";
 import AlertBadge from "@/features/alerts/components/AlertBadge";
+import DeleteButton from "@/features/alerts/components/DeleteButton";
 import { formatAlertDateTime, getAlertConfidenceColor } from "@/features/alerts/dtos/alertViewDto";
 import { Alert } from "@/features/alerts/types/alert";
 
@@ -54,18 +55,17 @@ export default function AlertsTable({ alerts, loading, onOpenAlert, onDeleteAler
                 }
               </td>
               <td style={td}>
-                <button
+                <DeleteButton
                   onClick={(e) => {
                     e.stopPropagation();
                     if (confirm(`Xóa cảnh báo #${alert.id}?`)) {
                       onDeleteAlert(alert.id);
                     }
                   }}
-                  style={deleteBtn}
                   title="Xóa cảnh báo"
                 >
-                  <Trash2 size={14} /> Xóa
-                </button>
+                  Xóa
+                </DeleteButton>
               </td>
             </tr>
           ))}
@@ -78,4 +78,3 @@ export default function AlertsTable({ alerts, loading, onOpenAlert, onDeleteAler
 const th: React.CSSProperties = { padding: "0.75rem 1rem", textAlign: "left", fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" };
 const td: React.CSSProperties = { padding: "0.85rem 1rem", fontSize: "0.9rem" };
 const emptyTd: React.CSSProperties = { textAlign: "center", padding: "3rem", color: "var(--text-muted)" };
-const deleteBtn: React.CSSProperties = { background: "var(--accent-dim)", border: "1px solid var(--accent)", borderRadius: "0.4rem", color: "var(--accent)", cursor: "pointer", display: "flex", alignItems: "center", gap: "0.35rem", padding: "0.35rem 0.6rem", fontSize: "0.8rem" };

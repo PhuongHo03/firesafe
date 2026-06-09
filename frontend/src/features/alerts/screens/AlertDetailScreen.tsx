@@ -2,9 +2,10 @@
 
 import { useRouter, useParams } from "next/navigation";
 import AlertDetailCard from "@/features/alerts/components/AlertDetailCard";
+import DeleteButton from "@/features/alerts/components/DeleteButton";
 import { useAlert } from "@/features/alerts/hooks/useAlert";
 import Sidebar from "@/layouts/Sidebar";
-import { ArrowLeft, Flame, Trash2 } from "lucide-react";
+import { ArrowLeft, Flame } from "lucide-react";
 
 export default function AlertDetailScreen() {
   const router = useRouter();
@@ -15,19 +16,8 @@ export default function AlertDetailScreen() {
   return (
     <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
       <Sidebar />
-      <main style={{ flex: 1, overflowY: "auto", padding: "2rem" }}>
-        <button id="back-btn" onClick={() => router.back()} style={{
-          background: "transparent",
-          border: "none",
-          color: "var(--text-muted)",
-          cursor: "pointer",
-          display: "flex",
-          alignItems: "center",
-          gap: "0.4rem",
-          marginBottom: "1.5rem",
-          fontSize: "0.875rem",
-          padding: 0,
-        }}>
+      <main className="alert-detail-page">
+        <button id="back-btn" onClick={() => router.back()} className="alert-detail-back">
           <ArrowLeft size={16} /> Quay lại
         </button>
 
@@ -35,29 +25,91 @@ export default function AlertDetailScreen() {
         {error && <p style={{ color: "var(--accent)" }}>{error}</p>}
 
         {alert && (
-          <div style={{ display: "grid", gap: "1.5rem", maxWidth: "900px" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem" }}>
-              <h1 style={{ margin: 0, fontSize: "1.4rem", fontWeight: 700, display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                <Flame size={20} color="var(--accent)" /> Cảnh báo #{alert.id}
+          <div className="alert-detail-shell">
+            <div className="alert-detail-header">
+              <h1 className="alert-detail-title">
+                <Flame size={26} color="var(--accent)" /> Cảnh báo #{alert.id}
               </h1>
-              <button
+              <DeleteButton
                 onClick={() => {
                   if (confirm(`Xóa cảnh báo #${alert.id}?`)) {
                     deleteAlert();
                   }
                 }}
-                style={deleteBtn}
+                size="md"
               >
-                <Trash2 size={14} /> Xóa
-              </button>
+                Xóa
+              </DeleteButton>
             </div>
 
             <AlertDetailCard alert={alert} />
           </div>
         )}
+        <style jsx>{`
+          .alert-detail-page {
+            flex: 1;
+            min-width: 0;
+            height: 100vh;
+            overflow-y: auto;
+            padding: clamp(1rem, 2vw, 2rem);
+          }
+
+          .alert-detail-back {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            margin-bottom: clamp(1rem, 2vh, 1.5rem);
+            font-size: 0.95rem;
+            padding: 0;
+          }
+
+          .alert-detail-shell {
+            display: grid;
+            grid-template-rows: auto minmax(0, 1fr);
+            gap: clamp(1rem, 2vh, 1.5rem);
+            min-height: calc(100vh - 7rem);
+            width: 100%;
+          }
+
+          .alert-detail-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+          }
+
+          .alert-detail-title {
+            margin: 0;
+            font-size: clamp(1.55rem, 2vw, 2.3rem);
+            font-weight: 750;
+            display: flex;
+            align-items: center;
+            gap: 0.65rem;
+            line-height: 1.1;
+          }
+
+          @media (max-width: 760px) {
+            .alert-detail-page {
+              height: auto;
+              min-height: 100vh;
+              overflow-y: visible;
+            }
+
+            .alert-detail-shell {
+              min-height: 0;
+            }
+
+            .alert-detail-header {
+              align-items: flex-start;
+              flex-direction: column;
+            }
+          }
+        `}</style>
       </main>
     </div>
   );
 }
-
-const deleteBtn: React.CSSProperties = { background: "var(--accent-dim)", border: "1px solid var(--accent)", borderRadius: "0.4rem", color: "var(--accent)", cursor: "pointer", display: "flex", alignItems: "center", gap: "0.35rem", padding: "0.45rem 0.8rem", fontSize: "0.85rem" };
