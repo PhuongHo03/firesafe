@@ -151,6 +151,21 @@ public class AlertService {
         return AlertResponse.from(alert);
     }
 
+    @Transactional
+    public AlertResponse resolveAlert(Long id) {
+        Alert alert = alertRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("Alert not found: " + id));
+        alert.setStatus(Alert.STATUS_RESOLVED);
+        Alert saved = alertRepository.save(alert);
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                evictAlertListCache();
+            }
+        });
+        return AlertResponse.from(saved);
+    }
+
     @Transactional(readOnly = true)
     public byte[] getAlertImage(Long id) {
         Alert alert = alertRepository.findById(id)

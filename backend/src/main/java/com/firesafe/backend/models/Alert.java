@@ -13,6 +13,9 @@ import java.time.LocalDateTime;
 @Getter @Setter @NoArgsConstructor
 public class Alert {
 
+    public static final String STATUS_NEW = "NEW";
+    public static final String STATUS_RESOLVED = "RESOLVED";
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -31,7 +34,7 @@ public class Alert {
     private String imageUrl;
 
     @Column(nullable = false, length = 50)
-    private String status = "NEW";
+    private String status = STATUS_NEW;
 
     @Column(name = "detected_at", nullable = false)
     private LocalDateTime detectedAt;

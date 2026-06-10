@@ -10,6 +10,8 @@ import type { Alert } from "@/features/alerts/types/alert";
 import { camerasApi } from "@/features/cameras/api/camerasApi";
 import type { Camera } from "@/features/cameras/types/camera";
 import { getToken } from "@/shared/utils/auth";
+import { getAlertStatusBackground, getAlertStatusColor, getAlertStatusText } from "@/shared/utils/alertStatus";
+import { formatVietnamDateTime } from "@/shared/utils/date";
 import { ArrowLeft, Bell, Camera as CameraIcon, ExternalLink, MapPin, Radio } from "lucide-react";
 
 const CAMERA_DETAIL_ALERT_LIMIT = 50;
@@ -173,7 +175,7 @@ export default function CameraDetailScreen() {
                       <option value="">{alerts.length === 0 ? "Chưa có alert" : "Chọn alert để xem chi tiết"}</option>
                       {alerts.map(alert => (
                         <option key={alert.id} value={alert.id}>
-                          #{alert.id} - {alert.label.toUpperCase()} - {Math.round(Number(alert.confidence) * 100)}% - {formatDate(alert.detectedAt)}
+                          #{alert.id} - {alert.label.toUpperCase()} - {Math.round(Number(alert.confidence) * 100)}% - {getAlertStatusText(alert.status)} - {formatVietnamDateTime(alert.detectedAt)}
                         </option>
                       ))}
                     </select>
@@ -188,9 +190,19 @@ export default function CameraDetailScreen() {
                           <span style={alertIdBadge}>#{alert.id}</span>
                           <span style={{ fontWeight: 750 }}>{alert.label.toUpperCase()}</span>
                           <span style={{ color: "var(--text-muted)" }}>{Math.round(Number(alert.confidence) * 100)}%</span>
+                          <span
+                            style={{
+                              ...alertStatusBadge,
+                              background: getAlertStatusBackground(alert.status),
+                              borderColor: `${getAlertStatusColor(alert.status)}66`,
+                              color: getAlertStatusColor(alert.status),
+                            }}
+                          >
+                            {getAlertStatusText(alert.status)}
+                          </span>
                         </span>
                         <span style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem", color: "var(--text-muted)", whiteSpace: "nowrap" }}>
-                          {formatDate(alert.detectedAt)} <ExternalLink size={12} />
+                          {formatVietnamDateTime(alert.detectedAt)} <ExternalLink size={12} />
                         </span>
                       </button>
                     ))}
@@ -203,15 +215,6 @@ export default function CameraDetailScreen() {
       </main>
     </div>
   );
-}
-
-function formatDate(value: string) {
-  return new Date(value).toLocaleString("vi-VN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    day: "2-digit",
-    month: "2-digit",
-  });
 }
 
 const backBtn: React.CSSProperties = {
@@ -348,6 +351,17 @@ const alertIdBadge: React.CSSProperties = {
   flex: "0 0 auto",
   minWidth: "3rem",
   color: "var(--text)",
+  fontWeight: 750,
+};
+
+const alertStatusBadge: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  flex: "0 0 auto",
+  border: "1px solid",
+  borderRadius: "999px",
+  padding: "0.2rem 0.55rem",
+  fontSize: "0.78rem",
   fontWeight: 750,
 };
 

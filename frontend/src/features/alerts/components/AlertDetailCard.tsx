@@ -1,6 +1,8 @@
-import { Camera, Clock, Flame, Tag } from "lucide-react";
-import { formatAlertDateTime, getAlertImageUrl } from "@/features/alerts/dtos/alertViewDto";
+import { Camera, Clock, Flame, MapPin, Tag } from "lucide-react";
+import { getAlertImageUrl } from "@/features/alerts/dtos/alertViewDto";
 import { Alert } from "@/features/alerts/types/alert";
+import { getAlertStatusBackground, getAlertStatusColor, getAlertStatusText } from "@/shared/utils/alertStatus";
+import { formatVietnamDateTime } from "@/shared/utils/date";
 
 export default function AlertDetailCard({ alert }: { alert: Alert }) {
   const imageUrl = getAlertImageUrl(alert);
@@ -16,21 +18,22 @@ export default function AlertDetailCard({ alert }: { alert: Alert }) {
 
       <div className="alert-info-panel">
         <InfoRow icon={<Camera size={16} />} label="Camera" value={alert.cameraName} />
+        <InfoRow icon={<MapPin size={16} />} label="Location" value={alert.cameraLocation || "Không xác định"} />
         <InfoRow icon={<Tag size={16} />} label="Loại cảnh báo" value={alert.label.toUpperCase()} color="var(--accent)" />
         <InfoRow icon={<Flame size={16} />} label="Độ tin cậy" value={`${(alert.confidence * 100).toFixed(1)}%`} color={alert.confidence >= 0.9 ? "var(--accent)" : "var(--yellow)"} />
-        <InfoRow icon={<Clock size={16} />} label="Thời gian phát hiện" value={formatAlertDateTime(alert.detectedAt)} />
+        <InfoRow icon={<Clock size={16} />} label="Thời gian phát hiện" value={formatVietnamDateTime(alert.detectedAt)} />
         <div>
           <span className="info-label">TRẠNG THÁI</span>
           <div
             className="status-pill"
             style={{
-              background: alert.status === "NEW" ? "var(--accent-dim)" : "rgba(34,197,94,0.15)",
-              color: alert.status === "NEW" ? "var(--accent)" : "var(--green)",
-              borderColor: `${alert.status === "NEW" ? "var(--accent)" : "var(--green)"}66`,
+              background: getAlertStatusBackground(alert.status),
+              color: getAlertStatusColor(alert.status),
+              borderColor: `${getAlertStatusColor(alert.status)}66`,
             }}
           >
-            <span className="status-dot" style={{ background: alert.status === "NEW" ? "var(--accent)" : "var(--green)" }} />
-            {alert.status === "NEW" ? "Mới" : "Đã xử lý"}
+            <span className="status-dot" style={{ background: getAlertStatusColor(alert.status) }} />
+            {getAlertStatusText(alert.status)}
           </div>
         </div>
       </div>

@@ -25,6 +25,13 @@ export const alertsApi = {
     });
   },
 
+  resolveAlert(id: number, token: string) {
+    return request<Alert>(`/api/v1/alerts/${id}/resolve`, {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  },
+
   deleteAlert(id: number, token: string) {
     return request<void>(`/api/v1/alerts/${id}`, {
       method: "DELETE",

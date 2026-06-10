@@ -54,7 +54,7 @@ public class MonitoringService {
                 new MonitoringSummaryResponse.BackendSummary("UP"),
                 new MonitoringSummaryResponse.AlertSummary(
                         alertRepository.count(),
-                        alertRepository.countByStatus("NEW"),
+                        alertRepository.countByStatus(Alert.STATUS_NEW),
                         alertRepository.countByDetectedAtAfter(last24h),
                         alertRepository.countByDetectedAtAfterAndConfidenceGreaterThanEqual(last24h, new BigDecimal("0.9000"))
                 ),
@@ -243,7 +243,7 @@ public class MonitoringService {
                 ),
                 new AdminMetricsResponse.AlertMetrics(
                         alertRepository.count(),
-                        alertRepository.countByStatus("NEW"),
+                        alertRepository.countByStatus(Alert.STATUS_NEW),
                         alertRepository.countByDetectedAtAfter(last24h),
                         alertRepository.countByDetectedAtAfterAndConfidenceGreaterThanEqual(last24h, new BigDecimal("0.9000")),
                         alertCountsByLabel,

@@ -39,5 +39,13 @@ export function useAlert(id: number) {
     router.push("/alerts");
   }, [id, token, router]);
 
-  return { alert, loading, error, deleteAlert };
+  const resolveAlert = useCallback(async () => {
+    if (!token) {
+      return;
+    }
+    const resolved = await alertsApi.resolveAlert(id, token);
+    setAlert(resolved);
+  }, [id, token]);
+
+  return { alert, loading, error, deleteAlert, resolveAlert };
 }

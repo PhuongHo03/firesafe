@@ -53,6 +53,12 @@ public class AlertController {
         return ResponseEntity.ok(alertService.getAlertById(id));
     }
 
+    @PatchMapping("/{id}/resolve")
+    @Operation(summary = "Mark an alert as resolved")
+    public ResponseEntity<AlertResponse> resolveAlert(@PathVariable Long id) {
+        return ResponseEntity.ok(alertService.resolveAlert(id));
+    }
+
     @GetMapping("/{id}/image")
     @Operation(summary = "Get alert snapshot image through backend gateway")
     public ResponseEntity<byte[]> getAlertImage(@PathVariable Long id) {

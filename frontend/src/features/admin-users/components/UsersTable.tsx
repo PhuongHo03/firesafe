@@ -1,6 +1,5 @@
 import { UserAccount, UserUpdateInput } from "@/features/admin-users/types/user";
-
-const formatDateTime = (value: string) => new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "medium", timeZone: "Asia/Ho_Chi_Minh" }).format(new Date(value));
+import { formatVietnamDateTime } from "@/shared/utils/date";
 
 interface UsersTableProps {
   users: UserAccount[];
@@ -38,7 +37,7 @@ export default function UsersTable({ users, currentEmail, loading, onUpdateUser 
                     {user.active ? "Active" : "Pending"}{isSelf ? " (Bạn)" : ""}
                   </label>
                 </td>
-                <td style={td}>{formatDateTime(user.createdAt)}</td>
+                <td style={td}>{formatVietnamDateTime(user.createdAt)}</td>
               </tr>
             );
           })}

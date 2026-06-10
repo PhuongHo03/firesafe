@@ -11,6 +11,7 @@ public class AlertResponse {
     private Long id;
     private Long cameraId;
     private String cameraName;
+    private String cameraLocation;
     private String label;
     private BigDecimal confidence;
     private String imageUrl;
@@ -23,6 +24,7 @@ public class AlertResponse {
         dto.id = alert.getId();
         dto.cameraId = alert.getCamera().getId();
         dto.cameraName = alert.getCamera().getName();
+        dto.cameraLocation = alert.getCamera().getLocation();
         dto.label = alert.getLabel();
         dto.confidence = alert.getConfidence();
         dto.imageUrl = alert.getImageUrl();

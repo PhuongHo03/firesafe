@@ -6,6 +6,7 @@ import { useWorkerLogs } from "@/features/logs/hooks/useWorkerLogs";
 import { WorkerMonitoringSummary } from "@/features/logs/types/workerMonitoringSummary";
 import { camerasApi } from "@/features/cameras/api/camerasApi";
 import { getToken } from "@/shared/utils/auth";
+import { formatOptionalVietnamDateTime } from "@/shared/utils/date";
 import { Activity, RefreshCw, ScrollText } from "lucide-react";
 
 function fmtNumber(value: number | undefined, digits = 2) {
@@ -19,8 +20,7 @@ function fmtBool(value: boolean | undefined) {
 }
 
 function fmtTime(value: string | null | undefined) {
-  if (!value) return "-";
-  return new Date(value).toLocaleString("vi-VN");
+  return formatOptionalVietnamDateTime(value);
 }
 
 export default function LogsScreen() {

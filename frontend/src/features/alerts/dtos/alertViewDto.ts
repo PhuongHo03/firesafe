@@ -1,4 +1,5 @@
 import { Alert } from "@/features/alerts/types/alert";
+import { getAlertStatusText } from "@/shared/utils/alertStatus";
 import { getApiUrl } from "@/shared/utils/http";
 
 export function getAlertConfidenceColor(confidence: number) {
@@ -9,13 +10,7 @@ export function getAlertLabelColor(label: string) {
   return label === "fire" ? "var(--accent)" : "var(--yellow)";
 }
 
-export function getAlertStatusText(status: Alert["status"]) {
-  return status === "NEW" ? "Mới" : "Đã xử lý";
-}
-
-export function formatAlertDateTime(value: string) {
-  return new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "medium", timeZone: "Asia/Ho_Chi_Minh" }).format(new Date(value));
-}
+export { getAlertStatusText };
 
 export function getAlertImageUrl(alert: Alert): string | null {
   if (!alert.imageUrl) return null;

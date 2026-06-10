@@ -50,7 +50,7 @@ public class MetricsExportService {
                 now,
                 new MetricsExportResponse.AlertMetrics(
                         alerts.size(),
-                        alertRepository.countByStatus("NEW"),
+                        alertRepository.countByStatus(Alert.STATUS_NEW),
                         recentAlerts.size(),
                         recentAlerts.stream().filter(alert -> alert.getConfidence().compareTo(new BigDecimal("0.9000")) >= 0).count(),
                         byLabel,

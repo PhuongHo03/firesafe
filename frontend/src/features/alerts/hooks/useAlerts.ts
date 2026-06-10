@@ -70,6 +70,18 @@ export function useAlerts(pageSize = 15) {
     }
   }, [token, page, load]);
 
+  const resolveAlert = useCallback(async (id: number) => {
+    if (!token) {
+      return;
+    }
+    try {
+      await alertsApi.resolveAlert(id, token);
+      await load(page);
+    } catch {
+      setError("Không thể đánh dấu cảnh báo đã xử lý");
+    }
+  }, [token, page, load]);
+
   const deleteAllAlerts = useCallback(async () => {
     if (!token) {
       return;
@@ -102,6 +114,7 @@ export function useAlerts(pageSize = 15) {
     error,
     refreshing,
     reload,
+    resolveAlert,
     deleteAlert,
     deleteAllAlerts,
   };

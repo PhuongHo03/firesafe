@@ -12,7 +12,7 @@ export default function AlertsScreen() {
   const router = useRouter();
   const {
     alerts, total, page, setPage, totalPages,
-    loading, error, refreshing, reload, deleteAlert, deleteAllAlerts
+    loading, error, refreshing, reload, resolveAlert, deleteAlert, deleteAllAlerts
   } = useAlerts();
 
   return (
@@ -51,7 +51,7 @@ export default function AlertsScreen() {
           </div>
         )}
 
-        <AlertsTable alerts={alerts} loading={loading} onOpenAlert={id => router.push(`/alerts/${id}`)} onDeleteAlert={deleteAlert} />
+        <AlertsTable alerts={alerts} loading={loading} onOpenAlert={id => router.push(`/alerts/${id}`)} onResolveAlert={resolveAlert} onDeleteAlert={deleteAlert} />
         <AlertsPagination page={page} totalPages={totalPages} onPageChange={setPage} />
       </main>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
