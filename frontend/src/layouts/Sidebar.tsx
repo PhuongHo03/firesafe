@@ -6,16 +6,49 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { Flame, LayoutDashboard, Camera, LogOut, ListChecks, Users, ScrollText } from "lucide-react";
+import { alertsApi } from "@/features/alerts/api/alertsApi";
+import { subscribeAlertCountChanged } from "@/features/alerts/events/alertEvents";
 import { camerasApi } from "@/features/cameras/api/camerasApi";
 import { clearAuth, getToken, getUser } from "@/shared/utils/auth";
+
+const ALERT_BADGE_REFRESH_MS = 3_000;
 
 export default function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
   const [user, setUser] = useState<{ username: string; email: string } | null>(null);
+  const [newAlertCount, setNewAlertCount] = useState(0);
 
   useEffect(() => {
     setUser(getUser());
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadNewAlertCount() {
+      const token = getToken();
+      if (!token) {
+        if (mounted) setNewAlertCount(0);
+        return;
+      }
+
+      try {
+        const data = await alertsApi.getNewAlertCount(token);
+        if (mounted) setNewAlertCount(data.newCount);
+      } catch {
+        if (mounted) setNewAlertCount(0);
+      }
+    }
+
+    void loadNewAlertCount();
+    const unsubscribe = subscribeAlertCountChanged(loadNewAlertCount);
+    const id = setInterval(loadNewAlertCount, ALERT_BADGE_REFRESH_MS);
+    return () => {
+      mounted = false;
+      unsubscribe();
+      clearInterval(id);
+    };
   }, []);
 
   function logout() {
@@ -70,7 +103,29 @@ export default function Sidebar() {
               transition: "background 0.15s, color 0.15s",
             }}>
               <Icon size={17} color={active ? "var(--accent)" : undefined} />
-              {label}
+              <span style={{ flex: 1, minWidth: 0 }}>{label}</span>
+              {href === "/alerts" && newAlertCount > 0 && (
+                <span
+                  aria-label={`${newAlertCount} cảnh báo mới`}
+                  style={{
+                    minWidth: "1.25rem",
+                    height: "1.25rem",
+                    padding: "0 0.35rem",
+                    borderRadius: 999,
+                    background: "var(--accent)",
+                    color: "#fff",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "0.72rem",
+                    fontWeight: 800,
+                    lineHeight: 1,
+                    boxShadow: "0 0 0 2px var(--surface)",
+                  }}
+                >
+                  {newAlertCount > 99 ? "99+" : newAlertCount}
+                </span>
+              )}
             </Link>
           );
         })}

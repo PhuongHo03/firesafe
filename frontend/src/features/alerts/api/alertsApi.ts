@@ -25,8 +25,21 @@ export const alertsApi = {
     });
   },
 
+  getNewAlertCount(token: string) {
+    return request<{ newCount: number }>("/api/v1/alerts/new-count", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  },
+
   resolveAlert(id: number, token: string) {
     return request<Alert>(`/api/v1/alerts/${id}/resolve`, {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  },
+
+  resolveAllNewAlerts(token: string) {
+    return request<{ resolvedCount: number }>("/api/v1/alerts/resolve-all", {
       method: "PATCH",
       headers: { Authorization: `Bearer ${token}` },
     });

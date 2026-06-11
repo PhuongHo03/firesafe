@@ -33,7 +33,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class MonitoringService {
 
-    private static final String ADMIN_METRICS_CACHE_KEY = "admin:metrics:snapshot";
+    public static final String ADMIN_METRICS_CACHE_KEY = "admin:metrics:snapshot";
     private static final Duration ADMIN_METRICS_CACHE_TTL = Duration.ofSeconds(10);
     private static final DateTimeFormatter HOUR_FORMAT = DateTimeFormatter.ofPattern("HH:00");
 

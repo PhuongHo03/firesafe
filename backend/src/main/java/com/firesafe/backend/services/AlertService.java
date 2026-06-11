@@ -3,6 +3,8 @@ package com.firesafe.backend.services;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.firesafe.backend.dtos.AlertPageResponse;
 import com.firesafe.backend.dtos.AlertRequest;
+import com.firesafe.backend.dtos.AlertBulkResolveResponse;
+import com.firesafe.backend.dtos.AlertNewCountResponse;
 import com.firesafe.backend.dtos.AlertReservationRequest;
 import com.firesafe.backend.dtos.AlertReservationResponse;
 import com.firesafe.backend.dtos.AlertResponse;
@@ -120,7 +122,7 @@ public class AlertService {
             @Override
             public void afterCommit() {
                 log.info("New alert from camera {}, sending notification. Alert ID: {}", camera.getId(), saved.getId());
-                evictAlertListCache();
+                evictAlertDerivedCaches();
                 rabbitTemplate.convertAndSend(exchange, notificationRoutingKey(saved.getId()), saved.getId());
             }
         });
@@ -151,6 +153,11 @@ public class AlertService {
         return AlertResponse.from(alert);
     }
 
+    @Transactional(readOnly = true)
+    public AlertNewCountResponse getNewAlertCount() {
+        return new AlertNewCountResponse(alertRepository.countByStatus(Alert.STATUS_NEW));
+    }
+
     @Transactional
     public AlertResponse resolveAlert(Long id) {
         Alert alert = alertRepository.findById(id)
@@ -160,10 +167,28 @@ public class AlertService {
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
-                evictAlertListCache();
+                evictAlertDerivedCaches();
             }
         });
         return AlertResponse.from(saved);
+    }
+
+    @Transactional
+    public AlertBulkResolveResponse resolveAllNewAlerts() {
+        List<Alert> newAlerts = alertRepository.findByStatus(Alert.STATUS_NEW);
+        if (newAlerts.isEmpty()) {
+            return new AlertBulkResolveResponse(0);
+        }
+
+        newAlerts.forEach(alert -> alert.setStatus(Alert.STATUS_RESOLVED));
+        alertRepository.saveAll(newAlerts);
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                evictAlertDerivedCaches();
+            }
+        });
+        return new AlertBulkResolveResponse(newAlerts.size());
     }
 
     @Transactional(readOnly = true)
@@ -201,7 +226,7 @@ public class AlertService {
             @Override
             public void afterCommit() {
                 cleanupDeletedAlert(cameraId, label, alertId, imageUrl);
-                evictAlertListCache();
+                evictAlertDerivedCaches();
             }
         });
     }
@@ -228,6 +253,11 @@ public class AlertService {
         }
     }
 
+    private void evictAlertDerivedCaches() {
+        evictAlertListCache();
+        evictAdminMetricsCache();
+    }
+
     private void evictAlertListCache() {
         try {
             Set<String> keys = redisTemplate.keys(ALERT_LIST_CACHE_PREFIX + "*");
@@ -236,6 +266,14 @@ public class AlertService {
             }
         } catch (Exception ex) {
             log.warn("Failed to evict alert list cache", ex);
+        }
+    }
+
+    private void evictAdminMetricsCache() {
+        try {
+            redisTemplate.delete(MonitoringService.ADMIN_METRICS_CACHE_KEY);
+        } catch (Exception ex) {
+            log.warn("Failed to evict admin metrics cache", ex);
         }
     }
 

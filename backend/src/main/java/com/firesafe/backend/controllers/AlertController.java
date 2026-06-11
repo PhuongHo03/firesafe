@@ -1,6 +1,8 @@
 package com.firesafe.backend.controllers;
 
 import com.firesafe.backend.dtos.AlertRequest;
+import com.firesafe.backend.dtos.AlertBulkResolveResponse;
+import com.firesafe.backend.dtos.AlertNewCountResponse;
 import com.firesafe.backend.dtos.AlertPageResponse;
 import com.firesafe.backend.dtos.AlertReservationRequest;
 import com.firesafe.backend.dtos.AlertReservationResponse;
@@ -47,6 +49,12 @@ public class AlertController {
         return ResponseEntity.ok(alertService.getAlerts(cameraId, pageable));
     }
 
+    @GetMapping("/new-count")
+    @Operation(summary = "Count new alerts")
+    public ResponseEntity<AlertNewCountResponse> getNewAlertCount() {
+        return ResponseEntity.ok(alertService.getNewAlertCount());
+    }
+
     @GetMapping("/{id}")
     @Operation(summary = "Get a single alert by ID")
     public ResponseEntity<AlertResponse> getAlert(@PathVariable Long id) {
@@ -57,6 +65,12 @@ public class AlertController {
     @Operation(summary = "Mark an alert as resolved")
     public ResponseEntity<AlertResponse> resolveAlert(@PathVariable Long id) {
         return ResponseEntity.ok(alertService.resolveAlert(id));
+    }
+
+    @PatchMapping("/resolve-all")
+    @Operation(summary = "Mark all new alerts as resolved")
+    public ResponseEntity<AlertBulkResolveResponse> resolveAllNewAlerts() {
+        return ResponseEntity.ok(alertService.resolveAllNewAlerts());
     }
 
     @GetMapping("/{id}/image")

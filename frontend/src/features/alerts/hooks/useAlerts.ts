@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { alertsApi } from "@/features/alerts/api/alertsApi";
+import { notifyAlertCountChanged } from "@/features/alerts/events/alertEvents";
 import { Alert } from "@/features/alerts/types/alert";
 import { getToken } from "@/shared/utils/auth";
 
@@ -65,6 +66,7 @@ export function useAlerts(pageSize = 15) {
     try {
       await alertsApi.deleteAlert(id, token);
       await load(page);
+      notifyAlertCountChanged();
     } catch {
       setError("Không thể xoá cảnh báo");
     }
@@ -77,10 +79,25 @@ export function useAlerts(pageSize = 15) {
     try {
       await alertsApi.resolveAlert(id, token);
       await load(page);
+      notifyAlertCountChanged();
     } catch {
       setError("Không thể đánh dấu cảnh báo đã xử lý");
     }
   }, [token, page, load]);
+
+  const resolveAllNewAlerts = useCallback(async () => {
+    if (!token) {
+      return;
+    }
+    try {
+      await alertsApi.resolveAllNewAlerts(token);
+      setPage(0);
+      await load(0);
+      notifyAlertCountChanged();
+    } catch {
+      setError("Không thể đánh dấu tất cả cảnh báo đã xử lý");
+    }
+  }, [token, load]);
 
   const deleteAllAlerts = useCallback(async () => {
     if (!token) {
@@ -90,6 +107,7 @@ export function useAlerts(pageSize = 15) {
       await alertsApi.deleteAllAlerts(token);
       setPage(0);
       await load(0);
+      notifyAlertCountChanged();
     } catch {
       setError("Không thể xoá tất cả cảnh báo");
     }
@@ -115,6 +133,7 @@ export function useAlerts(pageSize = 15) {
     refreshing,
     reload,
     resolveAlert,
+    resolveAllNewAlerts,
     deleteAlert,
     deleteAllAlerts,
   };

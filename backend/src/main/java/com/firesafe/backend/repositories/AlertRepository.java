@@ -14,6 +14,7 @@ public interface AlertRepository extends JpaRepository<Alert, Long> {
     Page<Alert> findAllByOrderByDetectedAtDesc(Pageable pageable);
     Page<Alert> findByCameraIdOrderByDetectedAtDesc(Long cameraId, Pageable pageable);
     List<Alert> findByDetectedAtAfter(LocalDateTime detectedAt);
+    List<Alert> findByStatus(String status);
     long countByStatus(String status);
     long countByDetectedAtAfter(LocalDateTime detectedAt);
     long countByDetectedAtAfterAndConfidenceGreaterThanEqual(LocalDateTime detectedAt, BigDecimal confidence);

@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { alertsApi } from "@/features/alerts/api/alertsApi";
+import { notifyAlertCountChanged } from "@/features/alerts/events/alertEvents";
 import { Alert } from "@/features/alerts/types/alert";
 import { getToken } from "@/shared/utils/auth";
 
@@ -36,6 +37,7 @@ export function useAlert(id: number) {
       return;
     }
     await alertsApi.deleteAlert(id, token);
+    notifyAlertCountChanged();
     router.push("/alerts");
   }, [id, token, router]);
 
@@ -45,6 +47,7 @@ export function useAlert(id: number) {
     }
     const resolved = await alertsApi.resolveAlert(id, token);
     setAlert(resolved);
+    notifyAlertCountChanged();
   }, [id, token]);
 
   return { alert, loading, error, deleteAlert, resolveAlert };

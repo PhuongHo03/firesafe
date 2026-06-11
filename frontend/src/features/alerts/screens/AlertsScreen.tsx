@@ -6,13 +6,13 @@ import AlertsPagination from "@/features/alerts/components/AlertsPagination";
 import AlertsTable from "@/features/alerts/components/AlertsTable";
 import DeleteButton from "@/features/alerts/components/DeleteButton";
 import { useAlerts } from "@/features/alerts/hooks/useAlerts";
-import { RefreshCw } from "lucide-react";
+import { CheckCircle, RefreshCw } from "lucide-react";
 
 export default function AlertsScreen() {
   const router = useRouter();
   const {
     alerts, total, page, setPage, totalPages,
-    loading, error, refreshing, reload, resolveAlert, deleteAlert, deleteAllAlerts
+    loading, error, refreshing, reload, resolveAlert, resolveAllNewAlerts, deleteAlert, deleteAllAlerts
   } = useAlerts();
 
   return (
@@ -30,6 +30,20 @@ export default function AlertsScreen() {
             <button id="alerts-refresh-btn" onClick={reload} style={refreshBtn}>
               <RefreshCw size={14} style={{ animation: refreshing ? "spin 1s linear infinite" : "none" }} />
               Làm mới
+            </button>
+            <button
+              id="resolve-all-alerts-btn"
+              disabled={total === 0}
+              onClick={() => {
+                if (confirm("Đánh dấu tất cả cảnh báo mới là đã xử lý?")) {
+                  resolveAllNewAlerts();
+                }
+              }}
+              style={resolveAllBtn(total === 0)}
+              type="button"
+            >
+              <CheckCircle size={14} />
+              Đánh dấu tất cả
             </button>
             <DeleteButton
               id="delete-all-alerts-btn"
@@ -60,3 +74,17 @@ export default function AlertsScreen() {
 }
 
 const refreshBtn: React.CSSProperties = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "0.5rem", padding: "0.5rem 1rem", color: "var(--text-muted)", cursor: "pointer", display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.875rem" };
+const resolveAllBtn = (disabled: boolean): React.CSSProperties => ({
+  background: "rgba(245,158,11,0.14)",
+  border: "1px solid var(--yellow)",
+  borderRadius: "0.45rem",
+  color: "var(--yellow)",
+  cursor: disabled ? "not-allowed" : "pointer",
+  display: "flex",
+  alignItems: "center",
+  gap: "0.35rem",
+  fontSize: "0.8rem",
+  fontWeight: 700,
+  opacity: disabled ? 0.5 : 1,
+  padding: "0.35rem 0.6rem",
+});
